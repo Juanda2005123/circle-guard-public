@@ -4,14 +4,15 @@ import { QrCode, Thermometer, Users, Smartphone, Shield, LogOut, Activity } from
 import { useAuth } from '@/context/AuthContext';
 import { useQrToken } from '@/hooks/useQrToken';
 import { Link, useRouter } from 'expo-router';
+import QRCode from 'react-native-qrcode-svg';
 
 /**
  * Main Campus Entry Screen.
  * Implements Story 2.2: Secure Rotating QR Token display.
  */
 export default function HomeScreen() {
-  const { anonymousId, logout } = useAuth();
-  const { token, timeLeft } = useQrToken(anonymousId);
+  const { anonymousId, token: authToken, logout } = useAuth();
+  const { token, timeLeft } = useQrToken(anonymousId, authToken);
   const router = useRouter();
 
   return (
@@ -25,8 +26,16 @@ export default function HomeScreen() {
 
       <View style={styles.qrContainer}>
         <View style={styles.qrInner}>
-          {/* In a real app, this would use react-native-qrcode-svg with 'token' */}
-          <QrCode size={200} color="#f4f4f5" strokeWidth={1.5} />
+          {token ? (
+            <QRCode
+              value={token}
+              size={200}
+              backgroundColor="transparent"
+              color="#f4f4f5"
+            />
+          ) : (
+            <QrCode size={200} color="#f4f4f5" strokeWidth={1.5} />
+          )}
         </View>
         <Text style={styles.expiresText}>
           EXPIRES IN {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
@@ -34,7 +43,7 @@ export default function HomeScreen() {
       </View>
 
       <View style={styles.actionGrid}>
-        <Link href="/(tabs)/report" asChild>
+        <Link href="/questionnaire" asChild>
           <TouchableOpacity style={styles.actionButton}>
             <Activity size={20} color="#0891B2" />
             <Text style={styles.actionButtonText}>REPORT</Text>

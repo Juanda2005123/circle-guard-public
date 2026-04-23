@@ -21,5 +21,8 @@ vault:
   salt: "deadbeef"
   hash-salt: "12345678"
 
+jwt:
+  secret: "my-super-secret-dev-key-32-chars-long-12345678"
+
 server:
   port: 8083

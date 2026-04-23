@@ -71,6 +71,9 @@ class HealthStatusServiceTest {
     @MockBean
     private SystemSettingsRepository systemSettingsRepository;
 
+    @MockBean
+    private com.circleguard.promotion.repository.graph.CircleNodeRepository circleNodeRepository;
+
     @Test
     void shouldUpdateStatusSuccessfully() {
         String anonymousId = "user-abc-123";

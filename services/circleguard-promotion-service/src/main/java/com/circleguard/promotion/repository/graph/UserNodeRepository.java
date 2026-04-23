@@ -8,9 +8,10 @@ import java.util.Optional;
 public interface UserNodeRepository extends Neo4jRepository<UserNode, String> {
     
     @Query("MATCH (u1:User {anonymousId: $sourceId}), (u2:User {anonymousId: $targetId}) " +
-           "MERGE (u1)-[r:ENCOUNTERED]-(u2) " +
-           "SET r.startTime = $startTime, r.locationId = $locationId")
-    void recordEncounter(String sourceId, String targetId, Long startTime, String locationId);
+           "MERGE (u1)-[r:ENCOUNTERED {locationId: $locationId}]-(u2) " +
+           "ON CREATE SET r.startTime = $timestamp, r.duration = 0 " +
+           "ON MATCH SET r.duration = ($timestamp - r.startTime) / 1000")
+    void recordEncounter(String sourceId, String targetId, Long timestamp, String locationId);
 
     @Query("MATCH ()-[r]-() WHERE id(r) = $relId SET r.isValid = NOT coalesce(r.isValid, true)")
     void toggleEncounterValidity(Long relId);

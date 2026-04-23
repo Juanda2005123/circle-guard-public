@@ -22,6 +22,7 @@ public class HealthStatusService {
     private final StringRedisTemplate redisTemplate;
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final com.circleguard.promotion.repository.jpa.SystemSettingsRepository systemSettingsRepository;
+    private final com.circleguard.promotion.repository.graph.CircleNodeRepository circleNodeRepository;
 
     private static final String STATUS_KEY_PREFIX = "user:status:";
     private static final String TOPIC_STATUS_CHANGED = "promotion.status.changed";
@@ -116,6 +117,37 @@ public class HealthStatusService {
             payload.put("timestamp", System.currentTimeMillis());
 
             kafkaTemplate.send(TOPIC_STATUS_CHANGED, anonymousId, payload);
+
+            // Story 5.4: Automated Room Reservation Cancellation
+            checkAndBroadcastFencedCircles(anonymousId);
+
+            // Story 5.5: Administrative Alerting for Priority Roles
+            int affectedCount = (affected != null) ? affected.size() : 0;
+            if ("CONFIRMED".equals(status) || affectedCount > 20) {
+                log.info("Priority Alert triggered. Status: {}, Affected Count: {}", status, affectedCount);
+                Map<String, Object> priorityPayload = new HashMap<>();
+                priorityPayload.put("anonymousId", anonymousId);
+                priorityPayload.put("status", status);
+                priorityPayload.put("affectedCount", affectedCount);
+                priorityPayload.put("timestamp", System.currentTimeMillis());
+                priorityPayload.put("eventType", "CONFIRMED".equals(status) ? "CONFIRMED_CASE" : "LARGE_OUTBREAK");
+                
+                kafkaTemplate.send("alert.priority", anonymousId, priorityPayload);
+            }
+        }
+    }
+
+    private void checkAndBroadcastFencedCircles(String anonymousId) {
+        var fencedCircles = circleNodeRepository.findNewlyFencedCircles(anonymousId);
+        for (var circle : fencedCircles) {
+            log.info("Circle {} is now fully fenced. Broadcasting circle.fenced event.", circle.getName());
+            Map<String, Object> circlePayload = new HashMap<>();
+            circlePayload.put("circleId", circle.getId().toString());
+            circlePayload.put("locationId", circle.getLocationId());
+            circlePayload.put("name", circle.getName());
+            circlePayload.put("timestamp", System.currentTimeMillis());
+            
+            kafkaTemplate.send("circle.fenced", circle.getId().toString(), circlePayload);
         }
     }
 

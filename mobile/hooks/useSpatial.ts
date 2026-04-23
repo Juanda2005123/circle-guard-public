@@ -8,6 +8,9 @@ export interface Building {
     name: string;
     code: string;
     description: string;
+    latitude?: number;
+    longitude?: number;
+    address?: string;
 }
 
 export interface Floor {

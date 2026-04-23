@@ -25,19 +25,22 @@ class NotificationDispatcherTest {
     private SmsService smsService;
 
     @MockBean
+    private TemplateService templateService;
+
+    @MockBean
     private PushService pushService;
 
     @Test
     void shouldDispatchToAllChannelsConcurrently() throws Exception {
         // Setup slow services to test concurrency
-        when(emailService.sendAsync(anyString(), anyString())).thenReturn(CompletableFuture.completedFuture(null));
-        when(smsService.sendAsync(anyString(), anyString())).thenReturn(CompletableFuture.completedFuture(null));
-        when(pushService.sendAsync(anyString(), anyString())).thenReturn(CompletableFuture.completedFuture(null));
+        when(emailService.sendAsync(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+        when(smsService.sendAsync(any(), any())).thenReturn(CompletableFuture.completedFuture(null));
+        when(pushService.sendAsync(any(), any(), any())).thenReturn(CompletableFuture.completedFuture(null));
 
         dispatcher.dispatch("user-123", "Your health status has changed.");
 
-        verify(emailService, timeout(1000)).sendAsync(eq("user-123"), anyString());
-        verify(smsService, timeout(1000)).sendAsync(eq("user-123"), anyString());
-        verify(pushService, timeout(1000)).sendAsync(eq("user-123"), anyString());
+        verify(emailService, timeout(1000)).sendAsync(eq("user-123"), any());
+        verify(smsService, timeout(1000)).sendAsync(eq("user-123"), any());
+        verify(pushService, timeout(1000)).sendAsync(eq("user-123"), any(), any());
     }
 }

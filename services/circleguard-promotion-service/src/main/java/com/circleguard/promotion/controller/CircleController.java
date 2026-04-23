@@ -42,14 +42,14 @@ public class CircleController {
     }
 
     @PatchMapping("/{id}/validity")
-    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('HEALTH_CENTER')")
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('HEALTH_CENTER')")
     public ResponseEntity<Void> toggleValidity(@PathVariable Long id) {
         circleService.toggleCircleValidity(id);
         return ResponseEntity.ok().build();
     }
 
     @PostMapping("/{id}/force-fence")
-    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('HEALTH_CENTER')")
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('HEALTH_CENTER')")
     public ResponseEntity<Void> forceFence(@PathVariable Long id) {
         circleService.forceFenceCircle(id);
         return ResponseEntity.ok().build();

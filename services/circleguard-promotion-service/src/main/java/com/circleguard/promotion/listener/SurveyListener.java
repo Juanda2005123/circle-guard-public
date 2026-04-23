@@ -29,4 +29,21 @@ public class SurveyListener {
             log.error("Failed to process survey event: {}", event, e);
         }
     }
+
+    @KafkaListener(topics = "certificate.validated", groupId = "promotion-service-group")
+    public void onCertificateValidated(Map<String, Object> event) {
+        log.info("Received certificate validation event: {}", event);
+        
+        try {
+            String anonymousId = (String) event.get("anonymousId");
+            String status = (String) event.get("status");
+            
+            if (anonymousId != null && "APPROVED".equals(status)) {
+                log.info("Restoring user {} to ACTIVE due to approved certificate", anonymousId);
+                healthStatusService.updateStatus(anonymousId, "ACTIVE");
+            }
+        } catch (Exception e) {
+            log.error("Failed to process certificate validation event: {}", event, e);
+        }
+    }
 }

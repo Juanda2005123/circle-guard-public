@@ -2,6 +2,7 @@ import React from 'react';
 import { LayoutDashboard, Info, ScanLine, Users, Shield } from 'lucide-react-native';
 import { Link, Tabs, usePathname, useRouter } from 'expo-router';
 import { Platform, Pressable, View, StyleSheet, useWindowDimensions, Text, TouchableOpacity } from 'react-native';
+import { useSharedValue } from 'react-native-reanimated';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -17,10 +18,11 @@ export default function TabLayout() {
   const { anonymousId, logout } = useAuth();
   const { stats } = useMeshStats(anonymousId);
   const { width } = useWindowDimensions();
+  const progress = useSharedValue(0);
   const pathname = usePathname();
   const router = useRouter();
 
-  const isDesktop = Platform.OS === 'web' && width >= 768;
+  const isDesktop = width >= 768; // Include native tablets
 
   const Sidebar = () => (
     <View style={styles.sidebar}>
@@ -92,11 +94,11 @@ export default function TabLayout() {
         unconfirmedCount={stats?.unconfirmedCount || 0} 
       />
       {isDesktop && <Sidebar />}
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, backgroundColor: 'transparent' }}>
         <Tabs
           screenOptions={{
             tabBarActiveTintColor: Colors[colorScheme].tint,
-            headerShown: useClientOnlyValue(false, true),
+            headerShown: isDesktop ? false : useClientOnlyValue(false, true),
             tabBarStyle: isDesktop ? { display: 'none' } : {
               backgroundColor: 'transparent',
               borderTopWidth: 0,
@@ -160,12 +162,19 @@ export default function TabLayout() {
             }}
           />
           <Tabs.Screen
-        name="report"
-        options={{
-          href: null,
-        }}
-      />
-    </Tabs>
+            name="report"
+            options={{
+              href: null,
+            }}
+          />
+          <Tabs.Screen
+            name="admin"
+            options={{
+              href: null,
+              headerShown: false,
+            }}
+          />
+        </Tabs>
       </View>
     </View>
   );
@@ -174,7 +183,7 @@ export default function TabLayout() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: 'transparent',
   },
   sidebar: {
     width: 250,

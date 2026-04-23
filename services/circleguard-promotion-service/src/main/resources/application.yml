@@ -33,3 +33,7 @@ spring:
 
 server:
   port: 8088
+
+jwt:
+  secret: "my-super-secret-dev-key-32-chars-long-12345678"
+  expiration: 3600000

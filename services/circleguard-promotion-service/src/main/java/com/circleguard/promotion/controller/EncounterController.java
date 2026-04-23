@@ -45,7 +45,7 @@ public class EncounterController {
     }
 
     @org.springframework.web.bind.annotation.PatchMapping("/{id}/validity")
-    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('HEALTH_CENTER')")
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('HEALTH_CENTER')")
     public ResponseEntity<Void> toggleValidity(@org.springframework.web.bind.annotation.PathVariable Long id) {
         log.info("Toggling validity for encounter relationship: {}", id);
         userRepository.toggleEncounterValidity(id);
@@ -53,7 +53,7 @@ public class EncounterController {
     }
 
     @org.springframework.web.bind.annotation.PostMapping("/{id}/force-fence")
-    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('HEALTH_CENTER')")
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('HEALTH_CENTER')")
     public ResponseEntity<Void> forceFence(@org.springframework.web.bind.annotation.PathVariable Long id) {
         log.info("Force fencing encounter relationship: {}", id);
         userRepository.forceEncounterFence(id);

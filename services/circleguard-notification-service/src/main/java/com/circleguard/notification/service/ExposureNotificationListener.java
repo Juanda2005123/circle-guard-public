@@ -1,5 +1,7 @@
 package com.circleguard.notification.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -11,6 +13,8 @@ import org.springframework.stereotype.Service;
 public class ExposureNotificationListener {
 
     private final NotificationDispatcher dispatcher;
+    private final ObjectMapper objectMapper;
+    private final LmsService lmsService;
 
     /**
      * Listens for status changes and exposure events.
@@ -18,19 +22,17 @@ public class ExposureNotificationListener {
     @KafkaListener(topics = "promotion.status.changed", groupId = "notification-group")
     public void handleStatusChange(String eventJson) {
         log.info("Received health status change event: {}", eventJson);
-        // Extract anonymousId from eventJson (assuming format like {"userId": "...", ...})
-        // Simple extraction for now
-        String userId = extractUserId(eventJson);
-        dispatcher.dispatch(userId, "Attention: Your health status has been updated in CircleGuard. Please check the app for instructions.");
-    }
-
-    private String extractUserId(String json) {
-        // Simple regex or JSON parser. For now, just a mock extraction
-        if (json.contains("\"userId\":\"")) {
-            int start = json.indexOf("\"userId\":\"") + 10;
-            int end = json.indexOf("\"", start);
-            return json.substring(start, end);
+        try {
+            JsonNode node = objectMapper.readTree(eventJson);
+            String userId = node.path("anonymousId").asText("unknown");
+            String status = node.path("status").asText("UNKNOWN");
+            
+            if (!"ACTIVE".equals(status) && !"UNKNOWN".equals(status)) {
+                dispatcher.dispatch(userId, status);
+                lmsService.syncRemoteAttendance(userId, status);
+            }
+        } catch (Exception e) {
+            log.error("Failed to parse health status change event: {}", e.getMessage());
         }
-        return "unknown-user";
     }
 }

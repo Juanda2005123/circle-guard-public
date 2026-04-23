@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import * as TaskManager from 'expo-task-manager';
 import * as BackgroundFetch from 'expo-background-fetch';
 import * as SecureStore from 'expo-secure-store';
@@ -57,6 +58,10 @@ TaskManager.defineTask(PROXIMITY_SYNC_TASK, async () => {
  * Registers the proximity task with the OS.
  */
 export const registerProximityTask = async () => {
+    if (Platform.OS === 'web') {
+        console.log('[Task] BackgroundFetch not supported on web. Skipping registration.');
+        return;
+    }
     try {
         console.log('[Task] Registering PROXIMITY_SYNC_TASK...');
         await BackgroundFetch.registerTaskAsync(PROXIMITY_SYNC_TASK, {
@@ -74,5 +79,6 @@ export const registerProximityTask = async () => {
  * Unregisters the proximity task.
  */
 export const unregisterProximityTask = async () => {
+    if (Platform.OS === 'web') return;
     return BackgroundFetch.unregisterTaskAsync(PROXIMITY_SYNC_TASK);
 };

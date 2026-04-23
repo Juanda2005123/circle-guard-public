@@ -18,6 +18,10 @@ spring:
           starttls:
             enable: false
 
+auth:
+  api:
+    url: ${AUTH_API_URL:http://localhost:8180}
+
 jwt:
   secret: "my-super-secret-dev-key-32-chars-long-12345678"
   expiration: 3600000

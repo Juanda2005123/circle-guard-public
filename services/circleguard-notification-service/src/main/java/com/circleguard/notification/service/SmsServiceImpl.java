@@ -24,6 +24,9 @@ public class SmsServiceImpl implements SmsService {
     @Value("${twilio.from-number:+15550000000}")
     private String fromNumber;
 
+    @jakarta.annotation.Resource
+    private AuditLogService auditLogService;
+
     @PostConstruct
     public void init() {
         if (!accountSid.startsWith("AC_MOCK")) {
@@ -33,14 +36,21 @@ public class SmsServiceImpl implements SmsService {
 
     @Override
     @Async
+    @org.springframework.retry.annotation.Retryable(
+        retryFor = { Exception.class },
+        maxAttempts = 3,
+        backoff = @org.springframework.retry.annotation.Backoff(delay = 2000)
+    )
     public CompletableFuture<Void> sendAsync(String userId, String messageContent) {
+        String correlationId = java.util.UUID.randomUUID().toString();
         if (accountSid.startsWith("AC_MOCK")) {
             log.info("[MOCK SMS] To: {}, Content: {}", userId, messageContent);
+            auditLogService.logDelivery(userId, "SMS", "SUCCESS", correlationId);
             return CompletableFuture.completedFuture(null);
         }
 
         try {
-            log.debug("Sending SMS to user: {}", userId);
+            log.debug("Attempting to send SMS to user: {}", userId);
             // Mocking phone number lookup
             String toPhone = "+15551112222"; 
             
@@ -51,10 +61,19 @@ public class SmsServiceImpl implements SmsService {
             ).create();
 
             log.info("SMS sent successfully to user: {}", userId);
+            auditLogService.logDelivery(userId, "SMS", "SUCCESS", correlationId);
             return CompletableFuture.completedFuture(null);
         } catch (Exception e) {
-            log.error("Failed to send SMS to user {}: {}", userId, e.getMessage());
-            return CompletableFuture.failedFuture(e);
+            log.warn("Failed to send SMS to user {} (correlationId: {}): {}", userId, correlationId, e.getMessage());
+            auditLogService.logDelivery(userId, "SMS", "RETRY", correlationId);
+            throw e;
         }
+    }
+
+    @org.springframework.retry.annotation.Recover
+    public CompletableFuture<Void> recover(Exception e, String userId, String messageContent) {
+        log.error("SMS delivery failed after max retries for user: {}. Error: {}", userId, e.getMessage());
+        auditLogService.logDelivery(userId, "SMS", "FAILED", null);
+        return CompletableFuture.failedFuture(e);
     }
 }

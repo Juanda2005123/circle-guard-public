@@ -16,11 +16,14 @@ public class BuildingService {
     private final FloorRepository floorRepository;
 
     @Transactional
-    public Building createBuilding(String name, String code, String description) {
+    public Building createBuilding(String name, String code, String description, Double latitude, Double longitude, String address) {
         Building building = Building.builder()
                 .name(name)
                 .code(code)
                 .description(description)
+                .latitude(latitude)
+                .longitude(longitude)
+                .address(address)
                 .build();
         return buildingRepository.save(building);
     }
@@ -30,12 +33,15 @@ public class BuildingService {
     }
 
     @Transactional
-    public Building updateBuilding(UUID id, String name, String code, String description) {
+    public Building updateBuilding(UUID id, String name, String code, String description, Double latitude, Double longitude, String address) {
         Building building = buildingRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Building not found"));
         building.setName(name);
         building.setCode(code);
         building.setDescription(description);
+        building.setLatitude(latitude);
+        building.setLongitude(longitude);
+        building.setAddress(address);
         return buildingRepository.save(building);
     }
 
