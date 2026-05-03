@@ -1,0 +1,19 @@
+services:
+  jenkins:
+    build:
+      context: .
+      dockerfile: Dockerfile.jenkins
+    container_name: circleguard-jenkins
+    user: root  # Esto asegura que pueda leer el socket de docker y el config de k8s
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mapeamos la CARPETA completa a una ruta neutral en el contenedor
+      - C:/Users/juand/.kube:/tmp/kube_host:ro
+    restart: unless-stopped
+
+volumes:
+  jenkins_home:
