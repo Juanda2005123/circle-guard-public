@@ -1,0 +1,79 @@
+# ============================================================
+# Notification Service — Kubernetes Manifests
+# Namespace  : ${NAMESPACE}
+# Image Tag  : ${IMAGE_TAG}
+# Registry   : ${DOCKER_REGISTRY}
+# Replaced by Jenkins pipeline via envsubst
+# ============================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service-deployment
+  namespace: ${NAMESPACE}
+  labels:
+    app: notification-service
+    team: dream-team
+    version: ${IMAGE_TAG}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notification-service
+  template:
+    metadata:
+      labels:
+        app: notification-service
+        team: dream-team
+        version: ${IMAGE_TAG}
+    spec:
+      containers:
+        - name: notification-service
+          image: ${DOCKER_REGISTRY}/circleguard-notification-service:${IMAGE_TAG}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8082
+          env:
+            - name: AUTH_API_URL
+              value: "http://auth-service:8180"
+            - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka:29092"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8082
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8082
+            initialDelaySeconds: 35
+            periodSeconds: 20
+            failureThreshold: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  namespace: ${NAMESPACE}
+  labels:
+    app: notification-service
+    team: dream-team
+spec:
+  type: ClusterIP
+  selector:
+    app: notification-service
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8082
+      targetPort: 8082
