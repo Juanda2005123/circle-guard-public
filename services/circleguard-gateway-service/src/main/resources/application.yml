@@ -1,6 +1,26 @@
 spring:
   application:
     name: circleguard-gateway-service
+  cloud:
+    gateway:
+      mvc:
+        routes:
+          - id: auth-service
+            uri: http://circleguard-auth:8180
+            predicates:
+              - Path=/api/v1/auth/**
+          - id: identity-service
+            uri: http://circleguard-identity:8083
+            predicates:
+              - Path=/api/v1/identities/**
+          - id: form-service
+            uri: http://circleguard-form:8086
+            predicates:
+              - Path=/api/v1/surveys/**,/api/v1/questionnaires/**,/api/v1/attachments/**
+          - id: promotion-service
+            uri: http://circleguard-promotion:8088
+            predicates:
+              - Path=/api/v1/mesh/**,/api/v1/circles/**,/api/v1/encounters/**,/api/v1/health/**,/api/v1/location/**,/api/v1/sessions/**,/api/v1/buildings/**,/api/v1/floors/**,/api/v1/access-points/**
   data:
     redis:
       host: localhost
