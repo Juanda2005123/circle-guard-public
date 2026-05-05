@@ -146,7 +146,11 @@ services:
       - "8088:8088"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/circleguard_promotion
-      SPRING_NEO4J_URI: bolt://neo4j:7687
+      # --- ESTAS SON LAS 3 LÍNEAS CORREGIDAS ---
+      SPRING_NEO4J_URI: bolt://circleguard-neo4j:7687
+      SPRING_NEO4J_AUTHENTICATION_USERNAME: neo4j
+      SPRING_NEO4J_AUTHENTICATION_PASSWORD: password
+      # -----------------------------------------
       SPRING_DATA_REDIS_HOST: redis
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
     depends_on:
