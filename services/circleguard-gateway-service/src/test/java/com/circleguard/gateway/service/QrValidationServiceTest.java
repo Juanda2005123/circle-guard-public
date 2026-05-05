@@ -65,4 +65,13 @@ public class QrValidationServiceTest {
         assertFalse(result.valid());
         assertEquals("RED", result.status());
     }
+
+    @Test
+    void shouldRejectInvalidToken() {
+        QrValidationService.ValidationResult result = service.validateToken("not-a-valid-token");
+
+        assertFalse(result.valid());
+        assertEquals("RED", result.status());
+        assertEquals("Invalid or Expired Token", result.message());
+    }
 }

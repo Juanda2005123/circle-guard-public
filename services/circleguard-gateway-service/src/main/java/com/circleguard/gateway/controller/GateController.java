@@ -15,6 +15,10 @@ public class GateController {
     @PostMapping("/validate")
     public ResponseEntity<QrValidationService.ValidationResult> validate(@RequestBody Map<String, String> request) {
         String token = request.get("token");
-        return ResponseEntity.ok(validationService.validateToken(token));
+        QrValidationService.ValidationResult result = validationService.validateToken(token);
+        if (!result.valid()) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.UNAUTHORIZED).body(result);
+        }
+        return ResponseEntity.ok(result);
     }
 }
