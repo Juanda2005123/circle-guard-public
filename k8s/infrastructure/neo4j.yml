@@ -42,6 +42,7 @@ spec:
         app: neo4j
         team: dream-team
     spec:
+      enableServiceLinks: false
       containers:
         - name: neo4j
           image: neo4j:5.26

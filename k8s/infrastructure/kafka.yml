@@ -97,6 +97,7 @@ spec:
         app: kafka
         team: dream-team
     spec:
+      enableServiceLinks: false
       containers:
         - name: kafka
           image: confluentinc/cp-kafka:7.6.0
