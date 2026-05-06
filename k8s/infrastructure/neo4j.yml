@@ -60,6 +60,8 @@ spec:
             # Desactiva servidores de actualización para entornos offline/kind
             - name: NEO4J_server_allow__upgrade
               value: "true"
+            - name: NEO4J_server_config_strict__validation_enabled
+              value: "false"
           volumeMounts:
             - name: neo4j-data
               mountPath: /data
