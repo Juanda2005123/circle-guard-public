@@ -16,6 +16,7 @@ pipeline {
         DOCKER_REGISTRY = 'localhost:5000'
         NAMESPACE       = 'dev'
         IMAGE_TAG       = "${env.BUILD_NUMBER}"
+        KUBECONFIG      = '/var/jenkins_home/.kube/config_internal'
     }
 
     // ----------------------------------------------------------
@@ -107,7 +108,29 @@ pipeline {
         }
 
         // ======================================================
-        // STAGE 4 — Deploy Infrastructure
+        // STAGE 4 — Prepare K8s Config
+        // ======================================================
+        stage('Prepare K8s Config') {
+            steps {
+                script {
+                    echo "🔧 Configurando credenciales de Kubernetes..."
+                    sh 'mkdir -p /var/jenkins_home/.kube'
+                    // Copiamos el config mapeado desde el host
+                    sh 'cp /tmp/kube_host/config ${KUBECONFIG}'
+                    // Cambiamos localhost por host.docker.internal
+                    sh "sed -i 's/127.0.0.1/host.docker.internal/g' \\${KUBECONFIG}"
+                    sh "sed -i 's/localhost/host.docker.internal/g' \\${KUBECONFIG}"
+                    // Borramos la validación estricta de certificado
+                    sh "sed -i '/certificate-authority-data/d' \\${KUBECONFIG}"
+                    // Aplicamos el flag insecure
+                    def clusterName = sh(script: "kubectl config view -o jsonpath='{.clusters[0].name}'", returnStdout: true).trim()
+                    sh "kubectl config set-cluster \\${clusterName} --insecure-skip-tls-verify=true"
+                }
+            }
+        }
+
+        // ======================================================
+        // STAGE 5 — Deploy Infrastructure
         // Aplica postgres, redis, neo4j, openldap, kafka
         // envsubst reemplaza ${NAMESPACE} antes del apply
         // ======================================================
