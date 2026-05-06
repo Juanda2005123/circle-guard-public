@@ -63,14 +63,14 @@ spec:
             httpGet:
               path: /actuator/health/readiness
               port: 8088
-            initialDelaySeconds: 30
+            initialDelaySeconds: 80
             periodSeconds: 10
             failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /actuator/health/liveness
               port: 8088
-            initialDelaySeconds: 45
+            initialDelaySeconds: 80
             periodSeconds: 20
             failureThreshold: 5
 ---

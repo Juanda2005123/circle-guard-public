@@ -156,7 +156,7 @@ pipeline {
                     sh """
                         kubectl rollout status deployment/postgres-deployment \
                             -n ${env.NAMESPACE} \
-                            --timeout=300s
+                            --timeout=600s
                     """
                     echo "✅ Infraestructura desplegada correctamente."
                 }
@@ -195,7 +195,7 @@ pipeline {
                         sh """
                             kubectl rollout status deployment/${service}-deployment \
                                 -n ${env.NAMESPACE} \
-                                --timeout=300s
+                                --timeout=600s
                         """
                     }
 

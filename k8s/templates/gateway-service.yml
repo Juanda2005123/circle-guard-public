@@ -38,14 +38,7 @@ spec:
               value: "redis"
             - name: SPRING_DATA_REDIS_PORT
               value: "6379"
-            - name: SPRING_CLOUD_GATEWAY_MVC_ROUTES_0_URI
-              value: "http://auth-service:8180"
-            - name: SPRING_CLOUD_GATEWAY_MVC_ROUTES_1_URI
-              value: "http://identity-service:8083"
-            - name: SPRING_CLOUD_GATEWAY_MVC_ROUTES_2_URI
-              value: "http://form-service:8086"
-            - name: SPRING_CLOUD_GATEWAY_MVC_ROUTES_3_URI
-              value: "http://promotion-service:8088"
+
           resources:
             requests:
               memory: "256Mi"
@@ -57,14 +50,14 @@ spec:
             httpGet:
               path: /actuator/health/readiness
               port: 8087
-            initialDelaySeconds: 20
+            initialDelaySeconds: 80
             periodSeconds: 10
             failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /actuator/health/liveness
               port: 8087
-            initialDelaySeconds: 30
+            initialDelaySeconds: 80
             periodSeconds: 20
             failureThreshold: 5
 ---
