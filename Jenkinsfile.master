@@ -32,6 +32,7 @@ pipeline {
         stage('Build & Test') {
             steps {
                 echo "🧪 Ejecutando suite de pruebas (unitarias + integración)..."
+                sh './gradlew cleanTest'
                 sh './gradlew test -x :services:circleguard-gateway-service:test --no-daemon --continue'
             }
             post {
