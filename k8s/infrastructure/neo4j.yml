@@ -64,10 +64,10 @@ spec:
               mountPath: /data
           resources:
             requests:
-              memory: "256Mi"
+              memory: "1Gi"
               cpu: "250m"
             limits:
-              memory: "512Mi"
+              memory: "2Gi"
               cpu: "500m"
           readinessProbe:
             httpGet:
