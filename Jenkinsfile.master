@@ -167,12 +167,7 @@ pipeline {
             steps {
                 script {
                     echo "📝 Generando Release Notes desde los últimos commits..."
-                    sh '''
-                        # Intenta obtener los commits desde el último tag, o los últimos 10 si no hay tags
-                        git log $(git describe --tags --abbrev=0 2>/dev/null)..HEAD --oneline > RELEASE_NOTES.md || git log -n 10 --oneline > RELEASE_NOTES.md
-                        echo "--- RELEASE NOTES ---"
-                        cat RELEASE_NOTES.md
-                    '''
+                    sh 'git log -n 10 --oneline > RELEASE_NOTES.md'
                 }
             }
         }
