@@ -30,7 +30,7 @@ import static org.hamcrest.Matchers.*;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class SystemWideE2ETest {
 
-    private static final String GATEWAY_URL = "http://localhost:8087";
+    private static final String GATEWAY_URL = System.getProperty("gateway.url", "http://localhost:8087");
     // Si el Gateway an no tiene configuradas las rutas inversas a los microservicios, 
     // asumimos que el ingress de localhost:8087 rutea /api/v1/auth hacia el auth-service, etc.
     // De lo contrario, estas pruebas verificarn que el Gateway cumpla su definicin.

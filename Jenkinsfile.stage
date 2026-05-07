@@ -169,7 +169,7 @@ pipeline {
                     echo "🧪 Ejecutando pruebas E2E (REST Assured) y de Rendimiento (Locust)..."
                     sh '''
                         echo "Ejecutando pruebas con REST Assured..."
-                        ./gradlew test --tests "*E2E*" || echo "Advertencia: Algunas pruebas E2E fallaron."
+                        ./gradlew test --tests "*E2E*" -Dgateway.url=http://host.docker.internal:30087 || echo "Advertencia: Algunas pruebas E2E fallaron."
                     '''
                     sh '''
                         echo "Ejecutando pruebas de carga con Locust..."
