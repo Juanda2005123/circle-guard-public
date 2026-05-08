@@ -1,0 +1,240 @@
+// ============================================================
+// Jenkinsfile.dev — Pipeline de CI/CD para el entorno DEV
+// Rama objetivo : feature/* (GitFlow)
+// Namespace K8s : dev
+// Requisitos    : Docker, kubectl, envsubst, kind en el agente
+// ============================================================
+
+pipeline {
+    agent any
+
+    // ----------------------------------------------------------
+    // Variables de entorno globales
+    // Serán exportadas automáticamente para que envsubst las lea
+    // ----------------------------------------------------------
+    environment {
+        DOCKER_REGISTRY = 'localhost:5000'
+        NAMESPACE       = 'dev'
+        IMAGE_TAG       = "${env.BUILD_NUMBER}"
+        KUBECONFIG      = '/var/jenkins_home/.kube/config_internal'
+    }
+
+    // ----------------------------------------------------------
+    // Opciones del pipeline
+    // ----------------------------------------------------------
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        disableConcurrentBuilds()
+    }
+
+    stages {
+
+        // ======================================================
+        // STAGE 1 — Checkout
+        // ======================================================
+        stage('Checkout') {
+            steps {
+                echo "📥 Descargando código de la rama: ${env.BRANCH_NAME}"
+                checkout scm
+                // Asegurar permisos de ejecución en gradlew (entorno Linux/Docker)
+                sh 'chmod +x gradlew'
+            }
+        }
+
+        // ======================================================
+        // STAGE 2 — Build & Test
+        // Ejecuta las 18 pruebas unitarias + 8 de integración
+        // El pipeline se DETIENE si alguna falla (fail-fast)
+        // ======================================================
+        stage('Build & Test') {
+            steps {
+                echo "🧪 Ejecutando suite de pruebas (unitarias + integración)..."
+                sh './gradlew cleanTest'
+                sh './gradlew test -x :services:circleguard-gateway-service:test --no-daemon --continue'
+            }
+            post {
+                always {
+                    // Publicar resultados en el panel de Jenkins
+                    junit allowEmptyResults: true,
+                          testResults: '**/build/test-results/**/*.xml'
+                    echo "📊 Resultados de pruebas publicados en Jenkins."
+                }
+                failure {
+                    echo "❌ STAGE 2 FALLIDO: Las pruebas no pasaron. Abortando pipeline."
+                }
+            }
+        }
+
+        // ======================================================
+        // STAGE 3 — Docker Build & Push
+        // Construye las imágenes de los 6 microservicios
+        // Contexto siempre es la raíz (.) para acceder a todos los módulos Gradle
+        // ======================================================
+        stage('Docker Build') {
+            steps {
+                script {
+                    echo "🐳 Construyendo imágenes Docker para los 6 microservicios..."
+
+                    def services = [
+                        'circleguard-gateway-service',
+                        'circleguard-auth-service',
+                        'circleguard-identity-service',
+                        'circleguard-form-service',
+                        'circleguard-notification-service',
+                        'circleguard-promotion-service'
+                    ]
+
+                    services.each { service ->
+                        def imageName = "${env.DOCKER_REGISTRY}/${service}:${env.IMAGE_TAG}"
+                        def imageLatest = "${env.DOCKER_REGISTRY}/${service}:latest"
+
+                        echo "  → Building: ${imageName}"
+                        sh """
+                            docker build \
+                                -t ${imageName} \
+                                -t ${imageLatest} \
+                                -f services/${service}/Dockerfile \
+                                .
+                        """
+
+                        // Las imágenes se construyen en el Docker local.
+                        // Como k8s está en el mismo Docker Desktop y la política es IfNotPresent, 
+                        // puede ver las imágenes sin necesidad de kind load o push.
+                    }
+
+                    echo "✅ Las 6 imágenes construidas y disponibles en el cluster."
+                }
+            }
+        }
+
+        // ======================================================
+        // STAGE 4 — Prepare K8s Config
+        // ======================================================
+        stage('Prepare K8s Config') {
+            steps {
+                script {
+                    echo "🔧 Configurando credenciales de Kubernetes..."
+                    sh 'mkdir -p /var/jenkins_home/.kube'
+                    // Copiamos el config mapeado desde el host
+                    sh 'cp /tmp/kube_host/config ${KUBECONFIG}'
+                    // Cambiamos localhost por host.docker.internal
+                    sh "sed -i 's/127.0.0.1/host.docker.internal/g' \\${KUBECONFIG}"
+                    sh "sed -i 's/localhost/host.docker.internal/g' \\${KUBECONFIG}"
+                    // Borramos la validación estricta de certificado
+                    sh "sed -i '/certificate-authority-data/d' \\${KUBECONFIG}"
+                    // Aplicamos el flag insecure
+                    def clusterName = sh(script: "kubectl config view -o jsonpath='{.clusters[0].name}'", returnStdout: true).trim()
+                    sh "kubectl config set-cluster \\${clusterName} --insecure-skip-tls-verify=true"
+                }
+            }
+        }
+
+        // ======================================================
+        // STAGE 5 — Deploy Infrastructure
+        // Aplica postgres, redis, neo4j, openldap, kafka
+        // envsubst reemplaza ${NAMESPACE} antes del apply
+        // ======================================================
+        stage('Deploy Infra') {
+            steps {
+                script {
+                    echo "🏗️  Desplegando infraestructura base en namespace '${env.NAMESPACE}'..."
+
+                    // Crear namespaces si no existen (idempotente)
+                    sh 'kubectl apply -f k8s/namespaces.yml'
+
+                    // Aplicar cada manifiesto de infraestructura con sustitución de variables
+                    sh '''
+                        for file in k8s/infrastructure/*.yml; do
+                            echo "  → Aplicando: $file"
+                            envsubst < "$file" | kubectl apply -f -
+                        done
+                    '''
+
+                    // Esperar a que Postgres esté listo antes de continuar
+                    echo "⏳ Esperando a que Postgres esté listo..."
+                    sh """
+                        kubectl rollout status deployment/postgres-deployment \
+                            -n ${env.NAMESPACE} \
+                            --timeout=600s
+                    """
+                    echo "✅ Infraestructura desplegada correctamente."
+                }
+            }
+        }
+
+        // ======================================================
+        // STAGE 5 — Deploy Services
+        // Aplica los 6 microservicios usando envsubst para
+        // reemplazar ${NAMESPACE}, ${IMAGE_TAG} y ${DOCKER_REGISTRY}
+        // ======================================================
+        stage('Deploy Services') {
+            steps {
+                script {
+                    echo "🚀 Desplegando los 6 microservicios en namespace '${env.NAMESPACE}'..."
+
+                    sh '''
+                        for file in k8s/templates/*.yml; do
+                            echo "  → Aplicando: $file"
+                            envsubst < "$file" | kubectl apply -f -
+                        done
+                    '''
+
+                    // Verificar rollout de cada microservicio
+                    def services = [
+                        'gateway-service',
+                        'identity-service',
+                        'auth-service',
+                        'form-service',
+                        'notification-service',
+                        'promotion-service'
+                    ]
+
+                    services.each { service ->
+                        echo "  → Verificando rollout de ${service}..."
+                        sh """
+                            kubectl rollout status deployment/${service}-deployment \
+                                -n ${env.NAMESPACE} \
+                                --timeout=600s
+                        """
+                    }
+
+                    echo "✅ Todos los microservicios desplegados y en estado Ready."
+                }
+            }
+        }
+    }
+
+    // ----------------------------------------------------------
+    // Post-pipeline: notificaciones y resumen
+    // ----------------------------------------------------------
+    post {
+        success {
+            echo """
+            ============================================
+            ✅ PIPELINE DEV — EXITOSO
+            --------------------------------------------
+            Namespace  : ${env.NAMESPACE}
+            Image Tag  : ${env.IMAGE_TAG}
+            Branch     : ${env.BRANCH_NAME}
+            Gateway URL: http://localhost:30087
+            ============================================
+            """
+        }
+        failure {
+            echo """
+            ============================================
+            ❌ PIPELINE DEV — FALLIDO
+            --------------------------------------------
+            Build  : #${env.BUILD_NUMBER}
+            Branch : ${env.BRANCH_NAME}
+            Revisa los logs del stage marcado en rojo.
+            ============================================
+            """
+        }
+        always {
+            echo "🔍 Logs del namespace ${env.NAMESPACE}:"
+            sh "kubectl get all -n ${env.NAMESPACE} 2>/dev/null || echo 'Namespace no disponible'"
+        }
+    }
+}

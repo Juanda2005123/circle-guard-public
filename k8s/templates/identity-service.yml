@@ -1,0 +1,68 @@
+# ============================================================
+# Identity Service — Kubernetes Manifests
+# Namespace  : ${NAMESPACE}
+# Image Tag  : ${IMAGE_TAG}
+# Registry   : ${DOCKER_REGISTRY}
+# Replaced by Jenkins pipeline via envsubst
+# ============================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: identity-service-deployment
+  namespace: ${NAMESPACE}
+  labels:
+    app: identity-service
+    team: dream-team
+    version: "${IMAGE_TAG}"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: identity-service
+  template:
+    metadata:
+      labels:
+        app: identity-service
+        team: dream-team
+        version: "${IMAGE_TAG}"
+    spec:
+      containers:
+        - name: identity-service
+          image: ${DOCKER_REGISTRY}/circleguard-identity-service:${IMAGE_TAG}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8083
+          env:
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:postgresql://postgres:5432/circleguard_identity"
+            - name: SPRING_DATASOURCE_USERNAME
+              value: "admin"
+            - name: SPRING_DATASOURCE_PASSWORD
+              value: "password"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: identity-service
+  namespace: ${NAMESPACE}
+  labels:
+    app: identity-service
+    team: dream-team
+spec:
+  type: ClusterIP
+  selector:
+    app: identity-service
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8083
+      targetPort: 8083

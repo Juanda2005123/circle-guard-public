@@ -1,0 +1,72 @@
+# ============================================================
+# Redis — Kubernetes Infrastructure Manifests
+# Namespace  : ${NAMESPACE}
+# Note       : Sin persistencia (cache volátil por diseño)
+# ============================================================
+
+# --- 1. Deployment ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-deployment
+  namespace: ${NAMESPACE}
+  labels:
+    app: redis
+    team: dream-team
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+        team: dream-team
+    spec:
+      containers:
+        - name: redis
+          image: redis:7.2
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 6379
+          command: ["redis-server", "--save", "", "--appendonly", "no"]
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+
+---
+# --- 2. Service (ClusterIP) ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: ${NAMESPACE}
+  labels:
+    app: redis
+    team: dream-team
+spec:
+  type: ClusterIP
+  selector:
+    app: redis
+  ports:
+    - name: redis
+      protocol: TCP
+      port: 6379
+      targetPort: 6379

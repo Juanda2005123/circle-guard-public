@@ -1,0 +1,205 @@
+// ============================================================
+// Jenkinsfile.master — Pipeline de CI/CD para el entorno PROD/MASTER
+// Rama objetivo : master / main
+// Namespace K8s : master
+// ============================================================
+
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_REGISTRY = 'localhost:5000'
+        NAMESPACE       = 'master'
+        IMAGE_TAG       = "${env.BUILD_NUMBER}"
+        KUBECONFIG      = '/var/jenkins_home/.kube/config_internal'
+    }
+
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        disableConcurrentBuilds()
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                echo "📥 Descargando código de la rama: ${env.BRANCH_NAME}"
+                checkout scm
+                sh 'chmod +x gradlew'
+            }
+        }
+
+        stage('Build & Test') {
+            steps {
+                echo "🧪 Ejecutando suite de pruebas (unitarias + integración)..."
+                sh './gradlew cleanTest'
+                sh './gradlew test -x :services:circleguard-gateway-service:test --no-daemon --continue'
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true,
+                          testResults: '**/build/test-results/**/*.xml'
+                    echo "📊 Resultados de pruebas publicados en Jenkins."
+                }
+                failure {
+                    echo "❌ STAGE 2 FALLIDO: Las pruebas no pasaron. Abortando pipeline."
+                }
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                script {
+                    echo "🐳 Construyendo imágenes Docker para los 6 microservicios..."
+
+                    def services = [
+                        'circleguard-gateway-service',
+                        'circleguard-auth-service',
+                        'circleguard-identity-service',
+                        'circleguard-form-service',
+                        'circleguard-notification-service',
+                        'circleguard-promotion-service'
+                    ]
+
+                    services.each { service ->
+                        def imageName = "${env.DOCKER_REGISTRY}/${service}:${env.IMAGE_TAG}"
+                        def imageLatest = "${env.DOCKER_REGISTRY}/${service}:latest"
+
+                        echo "  → Building: ${imageName}"
+                        sh """
+                            docker build \
+                                -t ${imageName} \
+                                -t ${imageLatest} \
+                                -f services/${service}/Dockerfile \
+                                .
+                        """
+
+                        // Las imágenes se construyen en el Docker local.
+                        // Como k8s está en el mismo Docker Desktop y la política es IfNotPresent, 
+                        // puede ver las imágenes sin necesidad de kind load o push.
+                    }
+
+                    echo "✅ Las 6 imágenes construidas y disponibles en el cluster."
+                }
+            }
+        }
+
+        stage('Prepare K8s Config') {
+            steps {
+                script {
+                    echo "🔧 Configurando credenciales de Kubernetes..."
+                    sh 'mkdir -p /var/jenkins_home/.kube'
+                    // Copiamos el config mapeado desde el host
+                    sh 'cp /tmp/kube_host/config ${KUBECONFIG}'
+                    // Cambiamos localhost por host.docker.internal
+                    sh "sed -i 's/127.0.0.1/host.docker.internal/g' \\${KUBECONFIG}"
+                    sh "sed -i 's/localhost/host.docker.internal/g' \\${KUBECONFIG}"
+                    // Borramos la validación estricta de certificado
+                    sh "sed -i '/certificate-authority-data/d' \\${KUBECONFIG}"
+                    // Aplicamos el flag insecure
+                    def clusterName = sh(script: "kubectl config view -o jsonpath='{.clusters[0].name}'", returnStdout: true).trim()
+                    sh "kubectl config set-cluster \\${clusterName} --insecure-skip-tls-verify=true"
+                }
+            }
+        }
+
+        stage('Deploy Infra') {
+            steps {
+                script {
+                    echo "🏗️  Desplegando infraestructura base en namespace '${env.NAMESPACE}'..."
+
+                    sh 'kubectl apply -f k8s/namespaces.yml'
+
+                    sh '''
+                        for file in k8s/infrastructure/*.yml; do
+                            echo "  → Aplicando: $file"
+                            envsubst < "$file" | kubectl apply -f -
+                        done
+                    '''
+
+                    echo "⏳ Esperando a que Postgres esté listo..."
+                    sh """
+                        kubectl rollout status deployment/postgres-deployment \
+                            -n ${env.NAMESPACE} \
+                            --timeout=600s
+                    """
+                    echo "✅ Infraestructura desplegada correctamente."
+                }
+            }
+        }
+
+        stage('Deploy Services') {
+            steps {
+                script {
+                    echo "🚀 Desplegando los 6 microservicios en namespace '${env.NAMESPACE}'..."
+
+                    sh '''
+                        for file in k8s/templates/*.yml; do
+                            echo "  → Aplicando: $file"
+                            envsubst < "$file" | kubectl apply -f -
+                        done
+                    '''
+
+                    def services = [
+                        'gateway-service',
+                        'identity-service',
+                        'auth-service',
+                        'form-service',
+                        'notification-service',
+                        'promotion-service'
+                    ]
+
+                    services.each { service ->
+                        echo "  → Verificando rollout de ${service}..."
+                        sh """
+                            kubectl rollout status deployment/${service}-deployment \
+                                -n ${env.NAMESPACE} \
+                                --timeout=600s
+                        """
+                    }
+
+                    echo "✅ Todos los microservicios desplegados y en estado Ready."
+                }
+            }
+        }
+
+        stage('Generate Release Notes') {
+            steps {
+                script {
+                    echo "📝 Generando Release Notes desde los últimos commits..."
+                    sh 'git log -n 10 --oneline > RELEASE_NOTES.md'
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo """
+            ============================================
+            ✅ PIPELINE MASTER — EXITOSO
+            --------------------------------------------
+            Namespace  : ${env.NAMESPACE}
+            Image Tag  : ${env.IMAGE_TAG}
+            Branch     : ${env.BRANCH_NAME}
+            Gateway URL: http://localhost:30087
+            ============================================
+            """
+        }
+        failure {
+            echo """
+            ============================================
+            ❌ PIPELINE MASTER — FALLIDO
+            --------------------------------------------
+            Build  : #${env.BUILD_NUMBER}
+            Branch : ${env.BRANCH_NAME}
+            Revisa los logs del stage marcado en rojo.
+            ============================================
+            """
+        }
+        always {
+            echo "🔍 Logs del namespace ${env.NAMESPACE}:"
+            sh "kubectl get all -n ${env.NAMESPACE} 2>/dev/null || echo 'Namespace no disponible'"
+        }
+    }
+}

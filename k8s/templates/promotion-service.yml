@@ -1,0 +1,80 @@
+# ============================================================
+# Promotion Service — Kubernetes Manifests
+# Namespace  : ${NAMESPACE}
+# Image Tag  : ${IMAGE_TAG}
+# Registry   : ${DOCKER_REGISTRY}
+# Replaced by Jenkins pipeline via envsubst
+# ============================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: promotion-service-deployment
+  namespace: ${NAMESPACE}
+  labels:
+    app: promotion-service
+    team: dream-team
+    version: "${IMAGE_TAG}"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: promotion-service
+  template:
+    metadata:
+      labels:
+        app: promotion-service
+        team: dream-team
+        version: "${IMAGE_TAG}"
+    spec:
+      containers:
+        - name: promotion-service
+          image: ${DOCKER_REGISTRY}/circleguard-promotion-service:${IMAGE_TAG}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8088
+          env:
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:postgresql://postgres:5432/circleguard_promotion"
+            - name: SPRING_DATASOURCE_USERNAME
+              value: "admin"
+            - name: SPRING_DATASOURCE_PASSWORD
+              value: "password"
+            - name: SPRING_NEO4J_URI
+              value: "bolt://neo4j:7687"
+            - name: SPRING_NEO4J_AUTHENTICATION_USERNAME
+              value: "neo4j"
+            - name: SPRING_NEO4J_AUTHENTICATION_PASSWORD
+              value: "password"
+            - name: SPRING_DATA_REDIS_HOST
+              value: "redis"
+            - name: SPRING_DATA_REDIS_PORT
+              value: "6379"
+            - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka:29092"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: promotion-service
+  namespace: ${NAMESPACE}
+  labels:
+    app: promotion-service
+    team: dream-team
+spec:
+  type: ClusterIP
+  selector:
+    app: promotion-service
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8088
+      targetPort: 8088
