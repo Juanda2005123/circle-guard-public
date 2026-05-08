@@ -1,0 +1,31 @@
+# ============================================================
+# CircleGuard — Kubernetes Namespaces
+# Entornos: dev (feature), stage (develop), master (prod)
+# Aplicar con: kubectl apply -f k8s/namespaces.yml
+# ============================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev
+  labels:
+    team: dream-team
+    env: development
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: stage
+  labels:
+    team: dream-team
+    env: staging
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: master
+  labels:
+    team: dream-team
+    env: production

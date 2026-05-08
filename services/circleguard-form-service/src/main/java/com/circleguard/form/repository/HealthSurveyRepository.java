@@ -8,4 +8,5 @@ import java.util.List;
 
 public interface HealthSurveyRepository extends JpaRepository<HealthSurvey, UUID> {
     List<HealthSurvey> findByAttachmentPathIsNotNullAndValidationStatus(ValidationStatus status);
+    List<HealthSurvey> findByAnonymousId(UUID anonymousId);
 }

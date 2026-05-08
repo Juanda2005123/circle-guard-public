@@ -1,12 +1,16 @@
 jwt:
-  secret: "my-super-secret-test-key-32-chars-long"
+  secret: "my-super-secret-test-key-32-chars-long-for-test-12345"
   expiration: 3600000
+
+qr:
+  secret: "my-qr-secret-key-for-test-1234567890-test"
+  expiration: 300
 
 spring:
   main:
     allow-bean-definition-overriding: true
   datasource:
-    url: jdbc:h2:mem:testdb
+    url: jdbc:h2:mem:testdb;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
     driver-class-name: org.h2.Driver
     username: sa
     password: password
@@ -14,3 +18,10 @@ spring:
     database-platform: org.hibernate.dialect.H2Dialect
     hibernate:
       ddl-auto: create-drop
+  flyway:
+    enabled: false
+  ldap:
+    urls: ldap://localhost:389
+    base: dc=test,dc=edu
+    username: cn=admin,dc=test,dc=edu
+    password: test

@@ -11,6 +11,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.Neo4jContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.junit.jupiter.api.Disabled;
 
 import java.util.UUID;
 
@@ -18,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest
 @Testcontainers
+@Disabled("Fails without Docker daemon running locally")
 public class PromotionPerformanceTest {
 
     @Container

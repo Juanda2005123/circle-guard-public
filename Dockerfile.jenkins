@@ -1,0 +1,36 @@
+FROM jenkins/jenkins:lts-jdk21
+
+USER root
+
+# Instalar dependencias necesarias
+RUN apt-get update && apt-get install -y \
+    lsb-release \
+    curl \
+    ca-certificates \
+    gnupg \
+    sudo \
+    gettext-base
+
+# Instalar Docker CLI
+RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list && \
+    apt-get update && apt-get install -y docker-ce-cli
+
+# Instalar kubectl
+RUN curl -fsSL "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" -o /usr/local/bin/kubectl && \
+    chmod +x /usr/local/bin/kubectl
+
+# PERMISOS: Asegurar que el usuario jenkins pueda usar docker y k8s
+# En Docker Desktop Windows, el GID suele ser 0 o 999. Esto le da permiso al socket.
+RUN groupadd -g 999 docker || true && \
+    usermod -aG docker jenkins
+
+# Instalar plugins (SIN versiones fijas para evitar el 404)
+RUN jenkins-plugin-cli --plugins \
+    workflow-aggregator \
+    docker-workflow \
+    git \
+    kubernetes-cli \
+    pipeline-stage-view
+
+USER jenkins

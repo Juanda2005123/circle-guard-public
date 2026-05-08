@@ -1,0 +1,132 @@
+# ============================================================
+# PostgreSQL — Kubernetes Infrastructure Manifests
+# Namespace  : ${NAMESPACE}
+# Includes   : ConfigMap (init-db.sql) + PVC + Deployment + Service
+# ============================================================
+
+# --- 1. ConfigMap: script de inicialización de bases de datos ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-config
+  namespace: ${NAMESPACE}
+  labels:
+    app: postgres
+    team: dream-team
+data:
+  init-db.sql: |
+    -- Initialize required microservice databases
+    SELECT 'CREATE DATABASE circleguard_auth'
+      WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'circleguard_auth')\gexec
+    SELECT 'CREATE DATABASE circleguard_identity'
+      WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'circleguard_identity')\gexec
+    SELECT 'CREATE DATABASE circleguard_promotion'
+      WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'circleguard_promotion')\gexec
+    SELECT 'CREATE DATABASE circleguard_dashboard'
+      WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'circleguard_dashboard')\gexec
+    SELECT 'CREATE DATABASE circleguard_form'
+      WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'circleguard_form')\gexec
+
+---
+# --- 2. PersistentVolumeClaim: almacenamiento persistente ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: ${NAMESPACE}
+  labels:
+    app: postgres
+    team: dream-team
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+
+---
+# --- 3. Deployment ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-deployment
+  namespace: ${NAMESPACE}
+  labels:
+    app: postgres
+    team: dream-team
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+        team: dream-team
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: "admin"
+            - name: POSTGRES_PASSWORD
+              value: "password"
+            - name: POSTGRES_DB
+              value: "circleguard"
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: init-script
+              mountPath: /docker-entrypoint-initdb.d/init-db.sql
+              subPath: init-db.sql
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "admin", "-d", "circleguard"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "admin", "-d", "circleguard"]
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 3
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: postgres-pvc
+        - name: init-script
+          configMap:
+            name: postgres-init-config
+
+---
+# --- 4. Service (ClusterIP) ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: ${NAMESPACE}
+  labels:
+    app: postgres
+    team: dream-team
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres
+  ports:
+    - name: postgres
+      protocol: TCP
+      port: 5432
+      targetPort: 5432

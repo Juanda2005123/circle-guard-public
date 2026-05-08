@@ -1,0 +1,164 @@
+# ============================================================
+# Kafka + Zookeeper — Kubernetes Infrastructure Manifests
+# Namespace  : ${NAMESPACE}
+# Usado por  : form-service, notification-service, promotion-service
+# Bootstrap  : kafka:29092 (interno al cluster)
+# ============================================================
+
+# --- 1. Zookeeper Deployment ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zookeeper-deployment
+  namespace: ${NAMESPACE}
+  labels:
+    app: zookeeper
+    team: dream-team
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zookeeper
+  template:
+    metadata:
+      labels:
+        app: zookeeper
+        team: dream-team
+    spec:
+      containers:
+        - name: zookeeper
+          image: confluentinc/cp-zookeeper:7.6.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 2181
+          env:
+            - name: ZOOKEEPER_CLIENT_PORT
+              value: "2181"
+            - name: ZOOKEEPER_TICK_TIME
+              value: "2000"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+          readinessProbe:
+            tcpSocket:
+              port: 2181
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            tcpSocket:
+              port: 2181
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            failureThreshold: 3
+
+---
+# --- 2. Zookeeper Service (ClusterIP) ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zookeeper
+  namespace: ${NAMESPACE}
+  labels:
+    app: zookeeper
+    team: dream-team
+spec:
+  type: ClusterIP
+  selector:
+    app: zookeeper
+  ports:
+    - name: client
+      protocol: TCP
+      port: 2181
+      targetPort: 2181
+
+---
+# --- 3. Kafka Deployment ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-deployment
+  namespace: ${NAMESPACE}
+  labels:
+    app: kafka
+    team: dream-team
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka
+  template:
+    metadata:
+      labels:
+        app: kafka
+        team: dream-team
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: kafka
+          image: confluentinc/cp-kafka:7.6.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 29092
+              name: internal
+          env:
+            - name: KAFKA_BROKER_ID
+              value: "1"
+            - name: KAFKA_ZOOKEEPER_CONNECT
+              value: "zookeeper:2181"
+            # Solo listener interno — no se expone fuera del cluster
+            - name: KAFKA_ADVERTISED_LISTENERS
+              value: "PLAINTEXT://kafka:29092"
+            - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+              value: "PLAINTEXT:PLAINTEXT"
+            - name: KAFKA_INTER_BROKER_LISTENER_NAME
+              value: "PLAINTEXT"
+            - name: KAFKA_LISTENERS
+              value: "PLAINTEXT://0.0.0.0:29092"
+            - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
+              value: "true"
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "250m"
+            limits:
+              memory: "2Gi"
+              cpu: "500m"
+          readinessProbe:
+            tcpSocket:
+              port: 29092
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            tcpSocket:
+              port: 29092
+            initialDelaySeconds: 40
+            periodSeconds: 20
+            failureThreshold: 3
+
+---
+# --- 4. Kafka Service (ClusterIP) ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  namespace: ${NAMESPACE}
+  labels:
+    app: kafka
+    team: dream-team
+spec:
+  type: ClusterIP
+  selector:
+    app: kafka
+  ports:
+    - name: internal
+      protocol: TCP
+      port: 29092
+      targetPort: 29092
