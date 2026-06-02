@@ -8,6 +8,7 @@ import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
 import java.util.UUID;
 
@@ -28,6 +29,7 @@ import static org.hamcrest.Matchers.*;
  * 5. Seguridad (Validación en el Gateway)
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@EnabledIfSystemProperty(named = "runE2E", matches = "true")
 public class SystemWideE2ETest {
 
     private static final String GATEWAY_URL = System.getProperty("gateway.url", "http://localhost:8087");
