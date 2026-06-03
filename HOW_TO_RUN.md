@@ -125,3 +125,39 @@ La configuración debe ser estrictamente la siguiente:
 | `circleguard-master` | `Jenkinsfile.master` | `*/master` (o `*/main`) | Despliegue a producción y autogeneración de Release Notes. |
 
 > **⚠️ Nota de Operación:** Si un pipeline compila código antiguo, verifica en *Configure -> Pipeline -> Branch Specifier* que no esté apuntando a una rama estática de desarrollo.
+
+---
+
+## Handoff & Execution Instructions (Stage/Master)
+
+Esta sección documenta los pasos necesarios para configurar y ejecutar localmente la infraestructura y el análisis de calidad/seguridad en el entorno de pre-producción (`stage`).
+
+### 1. SonarQube Setup (Análisis Estático)
+Para habilitar el escaneo de código estático por SonarQube desde el pipeline, es necesario contar con una instancia activa del servicio:
+*   **Levantar SonarQube localmente:**
+    Ejecuta el siguiente comando para levantar una instancia de la comunidad en segundo plano:
+    ```bash
+    docker run -d --name sonarqube -p 9000:9000 sonarqube:lts-community
+    ```
+*   **Configuración del Token en Jenkins:**
+    1. Abre tu navegador en `http://localhost:9000` (las credenciales por defecto son `admin`/`admin`).
+    2. Crea un nuevo proyecto manualmente o genera un token de acceso del usuario (*My Account -> Security -> Generate Token*).
+    3. Copia el token generado.
+    4. Ve a la consola de Jenkins (`http://localhost:8080`), navega a *Administrar Jenkins -> Credentials -> System -> Global credentials*, y añade una credencial de tipo **Secret text**.
+    5. Define el valor del token en el campo *Secret*, y configura el **ID** estrictamente como `sonar-token`.
+
+### 2. Despliegue de Infraestructura con Terraform
+Para crear la infraestructura de Kubernetes modularizada y el secreto utilizando Terraform:
+*   **Inicializar y Aplicar en el Entorno `stage`:**
+    Navega a la carpeta de Terraform y ejecuta:
+    ```bash
+    cd terraform
+    terraform init
+    terraform apply -var-file="environments/stage.tfvars"
+    ```
+    *(Nota: Asegúrate de pasar el archivo `.tfvars` adecuado para que cree el Namespace de stage y configure la infraestructura en el entorno correcto).*
+
+### 3. Ejecución del Pipeline
+1. Dirígete a la interfaz web de Jenkins en `http://localhost:8080`.
+2. Selecciona y ejecuta el job **`circleguard-stage`**.
+3. Confirma en el Stage View que las nuevas etapas **`Static Code Analysis (SonarQube)`** y **`Container Security Scan (Trivy)`** se ejecuten satisfactoriamente y generen los reportes correspondientes sin errores.

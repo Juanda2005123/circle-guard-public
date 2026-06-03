@@ -47,6 +47,17 @@ pipeline {
             }
         }
 
+        stage('Static Code Analysis (SonarQube)') {
+            steps {
+                script {
+                    echo "🔍 Iniciando análisis estático de código con SonarQube..."
+                    withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                        sh "./gradlew sonar -Dsonar.projectKey=circleguard -Dsonar.host.url=http://host.docker.internal:9000 -Dsonar.login=\${SONAR_TOKEN}"
+                    }
+                }
+            }
+        }
+
         stage('Docker Build') {
             steps {
                 script {
@@ -80,6 +91,23 @@ pipeline {
                     }
 
                     echo "✅ Las 6 imágenes construidas y disponibles en el cluster."
+                }
+            }
+        }
+
+        stage('Container Security Scan (Trivy)') {
+            steps {
+                script {
+                    echo "🛡️ Iniciando escaneo de seguridad de contenedores con Trivy..."
+                    def scanServices = [
+                        'circleguard-gateway-service',
+                        'circleguard-auth-service'
+                    ]
+                    scanServices.each { service ->
+                        def imageName = "${env.DOCKER_REGISTRY}/${service}:${env.IMAGE_TAG}"
+                        echo "  → Escaneando imagen: ${imageName}"
+                        sh "trivy image --severity HIGH,CRITICAL --no-progress ${imageName} || true"
+                    }
                 }
             }
         }
