@@ -67,6 +67,21 @@ pipeline {
         }
 
         // ======================================================
+        // STAGE 2.5 — Static Code Analysis (SonarQube)
+        // Analiza el código con SonarQube para asegurar calidad
+        // ======================================================
+        stage('Static Code Analysis (SonarQube)') {
+            steps {
+                script {
+                    echo "🔍 Iniciando análisis estático de código con SonarQube..."
+                    withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                        sh "./gradlew sonar -Dsonar.projectKey=circleguard -Dsonar.host.url=http://host.docker.internal:9000 -Dsonar.login=\${SONAR_TOKEN}"
+                    }
+                }
+            }
+        }
+
+        // ======================================================
         // STAGE 3 — Docker Build & Push
         // Construye las imágenes de los 6 microservicios
         // Contexto siempre es la raíz (.) para acceder a todos los módulos Gradle
@@ -104,6 +119,27 @@ pipeline {
                     }
 
                     echo "✅ Las 6 imágenes construidas y disponibles en el cluster."
+                }
+            }
+        }
+
+        // ======================================================
+        // STAGE 3.5 — Container Security Scan (Trivy)
+        // Escanea las imágenes en busca de vulnerabilidades de seguridad
+        // ======================================================
+        stage('Container Security Scan (Trivy)') {
+            steps {
+                script {
+                    echo "🛡️ Iniciando escaneo de seguridad de contenedores con Trivy..."
+                    def scanServices = [
+                        'circleguard-gateway-service',
+                        'circleguard-auth-service'
+                    ]
+                    scanServices.each { service ->
+                        def imageName = "${env.DOCKER_REGISTRY}/${service}:${env.IMAGE_TAG}"
+                        echo "  → Escaneando imagen: ${imageName}"
+                        sh "trivy image --severity HIGH,CRITICAL --no-progress ${imageName} || true"
+                    }
                 }
             }
         }
