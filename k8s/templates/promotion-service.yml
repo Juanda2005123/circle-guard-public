@@ -37,15 +37,27 @@ spec:
             - name: SPRING_DATASOURCE_URL
               value: "jdbc:postgresql://postgres:5432/circleguard_promotion"
             - name: SPRING_DATASOURCE_USERNAME
-              value: "admin"
+              valueFrom:
+                secretKeyRef:
+                  name: circleguard-secrets
+                  key: postgres-username
             - name: SPRING_DATASOURCE_PASSWORD
-              value: "password"
+              valueFrom:
+                secretKeyRef:
+                  name: circleguard-secrets
+                  key: postgres-password
             - name: SPRING_NEO4J_URI
               value: "bolt://neo4j:7687"
             - name: SPRING_NEO4J_AUTHENTICATION_USERNAME
-              value: "neo4j"
+              valueFrom:
+                secretKeyRef:
+                  name: circleguard-secrets
+                  key: neo4j-username
             - name: SPRING_NEO4J_AUTHENTICATION_PASSWORD
-              value: "password"
+              valueFrom:
+                secretKeyRef:
+                  name: circleguard-secrets
+                  key: neo4j-password
             - name: SPRING_DATA_REDIS_HOST
               value: "redis"
             - name: SPRING_DATA_REDIS_PORT

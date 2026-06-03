@@ -54,7 +54,10 @@ spec:
               containerPort: 7687
           env:
             - name: NEO4J_AUTH
-              value: "neo4j/password"
+              valueFrom:
+                secretKeyRef:
+                  name: circleguard-secrets
+                  key: neo4j-auth
             - name: NEO4J_PLUGINS
               value: '["apoc"]'
             # Desactiva servidores de actualización para entornos offline/kind

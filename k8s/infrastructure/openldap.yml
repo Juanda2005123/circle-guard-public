@@ -39,7 +39,10 @@ spec:
             - name: LDAP_DOMAIN
               value: "circleguard.edu"
             - name: LDAP_ADMIN_PASSWORD
-              value: "admin"
+              valueFrom:
+                secretKeyRef:
+                  name: circleguard-secrets
+                  key: ldap-admin-password
           resources:
             requests:
               memory: "64Mi"

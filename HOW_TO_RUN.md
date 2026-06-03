@@ -109,3 +109,19 @@ Las pruebas de carga simulan el inicio de sesión y envío masivo de formularios
     docker run --rm -it -p 8089:8089 -v ${PWD}/performance-tests:/mnt/locust locustio/locust -f /mnt/locust/locustfile.py --host http://host.docker.internal:30087
     ```
     *(Luego ingresa a `http://localhost:8089` en tu navegador para configurar y lanzar la prueba).*
+
+---
+
+## ⚙️ 4. Configuración de Jobs en Jenkins (Branching Strategy)
+
+Dado que la creación de jobs se realiza manualmente en la interfaz de Jenkins, es imperativo que el campo **Branch Specifier** de cada job apunte a la rama correcta para respetar el flujo de CI/CD. 
+
+La configuración debe ser estrictamente la siguiente:
+
+| Jenkins Job | Script Path | Branch Specifier (Rama) | Propósito |
+| :--- | :--- | :--- | :--- |
+| `circleguard-dev` | `Jenkinsfile.dev` | `*/develop` | Integración continua. Se dispara tras aceptar Pull Requests de ramas `feature/*`. |
+| `circleguard-stage` | `Jenkinsfile.stage` | `*/stage` (o `*/release/*`) | Entorno de pre-producción. Ejecuta las pruebas E2E y de carga. |
+| `circleguard-master` | `Jenkinsfile.master` | `*/master` (o `*/main`) | Despliegue a producción y autogeneración de Release Notes. |
+
+> **⚠️ Nota de Operación:** Si un pipeline compila código antiguo, verifica en *Configure -> Pipeline -> Branch Specifier* que no esté apuntando a una rama estática de desarrollo.
