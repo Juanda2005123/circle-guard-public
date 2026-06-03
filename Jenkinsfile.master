@@ -167,7 +167,9 @@ pipeline {
             steps {
                 script {
                     echo "📝 Generando Release Notes desde los últimos commits..."
-                    sh 'git log -n 10 --oneline > RELEASE_NOTES.md'
+                    sh "git log -n 20 --pretty=format:'- %h - %s (%an)' > RELEASE_NOTES.md"
+                    sh "cat RELEASE_NOTES.md"
+                    archiveArtifacts artifacts: 'RELEASE_NOTES.md', allowEmptyArchive: true
                 }
             }
         }

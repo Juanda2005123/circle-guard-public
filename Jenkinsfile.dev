@@ -51,7 +51,7 @@ pipeline {
             steps {
                 echo "🧪 Ejecutando suite de pruebas (unitarias + integración)..."
                 sh './gradlew cleanTest'
-                sh './gradlew test -x :services:circleguard-gateway-service:test --no-daemon --continue'
+                sh './gradlew test --no-daemon --continue'
             }
             post {
                 always {
@@ -131,7 +131,37 @@ pipeline {
         }
 
         // ======================================================
-        // STAGE 5 — Deploy Infrastructure
+        // STAGE 5 — Load Images to Kind
+        // Carga las imágenes Docker en el clúster local de Kind
+        // ======================================================
+        stage('Load Images to Kind') {
+            steps {
+                script {
+                    echo "📥 Cargando imágenes Docker en el clúster Kind..."
+                    def fullClusterName = sh(script: "kubectl config view -o jsonpath='{.clusters[0].name}'", returnStdout: true).trim()
+                    def clusterName = fullClusterName.startsWith("kind-") ? fullClusterName.substring(5) : fullClusterName
+
+                    def services = [
+                        'circleguard-gateway-service',
+                        'circleguard-auth-service',
+                        'circleguard-identity-service',
+                        'circleguard-form-service',
+                        'circleguard-notification-service',
+                        'circleguard-promotion-service'
+                    ]
+
+                    services.each { service ->
+                        def imageName = "${env.DOCKER_REGISTRY}/${service}:${env.IMAGE_TAG}"
+                        echo "  → Cargando imagen: ${imageName} en el clúster: ${clusterName}"
+                        sh "kind load docker-image ${imageName} --name ${clusterName}"
+                    }
+                    echo "✅ Todas las imágenes fueron cargadas en Kind."
+                }
+            }
+        }
+
+        // ======================================================
+        // STAGE 6 — Deploy Infrastructure
         // Aplica postgres, redis, neo4j, openldap, kafka
         // envsubst reemplaza ${NAMESPACE} antes del apply
         // ======================================================
@@ -164,7 +194,7 @@ pipeline {
         }
 
         // ======================================================
-        // STAGE 5 — Deploy Services
+        // STAGE 7 — Deploy Services
         // Aplica los 6 microservicios usando envsubst para
         // reemplazar ${NAMESPACE}, ${IMAGE_TAG} y ${DOCKER_REGISTRY}
         // ======================================================

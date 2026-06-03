@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: circleguard-gateway-service
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+jwt:
+  secret: "this-is-a-very-long-and-secure-jwt-secret-key-to-pass-weak-key-exception-test"
+  expiration: 3600000
+
+qr:
+  secret: "my-qr-secret-key-for-test-1234567890-test"
+  expiration: 300
+
+server:
+  port: 8087
+
