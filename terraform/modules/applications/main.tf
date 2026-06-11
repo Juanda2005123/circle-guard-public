@@ -60,6 +60,24 @@ resource "kubernetes_deployment" "gateway_service" {
               cpu    = "500m"
             }
           }
+
+          readiness_probe {
+            http_get {
+              path = "/actuator/health"
+              port = 8087
+            }
+            initial_delay_seconds = 30
+            period_seconds        = 10
+          }
+
+          liveness_probe {
+            http_get {
+              path = "/actuator/health"
+              port = 8087
+            }
+            initial_delay_seconds = 45
+            period_seconds        = 15
+          }
         }
       }
     }
@@ -168,6 +186,24 @@ resource "kubernetes_deployment" "identity_service" {
               memory = "512Mi"
               cpu    = "500m"
             }
+          }
+
+          readiness_probe {
+            http_get {
+              path = "/actuator/health"
+              port = 8083
+            }
+            initial_delay_seconds = 30
+            period_seconds        = 10
+          }
+
+          liveness_probe {
+            http_get {
+              path = "/actuator/health"
+              port = 8083
+            }
+            initial_delay_seconds = 45
+            period_seconds        = 15
           }
         }
       }
@@ -287,6 +323,24 @@ resource "kubernetes_deployment" "auth_service" {
               cpu    = "500m"
             }
           }
+
+          readiness_probe {
+            http_get {
+              path = "/actuator/health"
+              port = 8180
+            }
+            initial_delay_seconds = 30
+            period_seconds        = 10
+          }
+
+          liveness_probe {
+            http_get {
+              path = "/actuator/health"
+              port = 8180
+            }
+            initial_delay_seconds = 45
+            period_seconds        = 15
+          }
         }
       }
     }
@@ -400,6 +454,24 @@ resource "kubernetes_deployment" "form_service" {
               cpu    = "500m"
             }
           }
+
+          readiness_probe {
+            http_get {
+              path = "/actuator/health"
+              port = 8086
+            }
+            initial_delay_seconds = 30
+            period_seconds        = 10
+          }
+
+          liveness_probe {
+            http_get {
+              path = "/actuator/health"
+              port = 8086
+            }
+            initial_delay_seconds = 45
+            period_seconds        = 15
+          }
         }
       }
     }
@@ -492,6 +564,24 @@ resource "kubernetes_deployment" "notification_service" {
               memory = "512Mi"
               cpu    = "500m"
             }
+          }
+
+          readiness_probe {
+            http_get {
+              path = "/actuator/health"
+              port = 8082
+            }
+            initial_delay_seconds = 30
+            period_seconds        = 10
+          }
+
+          liveness_probe {
+            http_get {
+              path = "/actuator/health"
+              port = 8082
+            }
+            initial_delay_seconds = 45
+            period_seconds        = 15
           }
         }
       }
@@ -640,6 +730,24 @@ resource "kubernetes_deployment" "promotion_service" {
               memory = "512Mi"
               cpu    = "500m"
             }
+          }
+
+          readiness_probe {
+            http_get {
+              path = "/actuator/health"
+              port = 8088
+            }
+            initial_delay_seconds = 30
+            period_seconds        = 10
+          }
+
+          liveness_probe {
+            http_get {
+              path = "/actuator/health"
+              port = 8088
+            }
+            initial_delay_seconds = 45
+            period_seconds        = 15
           }
         }
       }
