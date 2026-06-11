@@ -29,6 +29,10 @@ qr:
 server:
   port: 8180
 
+app:
+  features:
+    visitor-handoff-enabled: true
+
 management:
   endpoints:
     web:
