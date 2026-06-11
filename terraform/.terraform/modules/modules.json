@@ -1,0 +1,1 @@
+{"Modules":[{"Key":"","Source":"","Dir":"."},{"Key":"applications","Source":"./modules/applications","Dir":"modules/applications"},{"Key":"base_infrastructure","Source":"./modules/base-infrastructure","Dir":"modules/base-infrastructure"},{"Key":"security","Source":"./modules/security","Dir":"modules/security"}]}
