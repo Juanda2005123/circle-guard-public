@@ -4,6 +4,7 @@ import com.circleguard.auth.client.IdentityClient;
 import com.circleguard.auth.service.JwtTokenService;
 import com.circleguard.auth.service.CustomUserDetailsService;
 import com.circleguard.auth.security.SecurityConfig;
+import com.circleguard.auth.config.FeatureFlagsProperties;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
@@ -35,10 +36,18 @@ public class LoginControllerTest {
         MeterRegistry meterRegistry() {
             return new SimpleMeterRegistry();
         }
+
+        @Bean
+        FeatureFlagsProperties featureFlagsProperties() {
+            return new FeatureFlagsProperties();
+        }
     }
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private FeatureFlagsProperties featureFlags;
 
     @MockBean
     private AuthenticationManager authManager;
@@ -75,5 +84,18 @@ public class LoginControllerTest {
                 .andExpect(jsonPath("$.token").value(token))
                 .andExpect(jsonPath("$.anonymousId").value(anonymousId.toString()))
                 .andExpect(jsonPath("$.type").value("Bearer"));
+    }
+
+    @Test
+    void visitorHandoff_WhenFeatureDisabled_ReturnsNotFound() throws Exception {
+        featureFlags.setVisitorHandoffEnabled(false);
+        try {
+            mockMvc.perform(post("/api/v1/auth/visitor/handoff")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"anonymousId\": \"" + UUID.randomUUID() + "\"}"))
+                    .andExpect(status().isNotFound());
+        } finally {
+            featureFlags.setVisitorHandoffEnabled(true);
+        }
     }
 }

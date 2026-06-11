@@ -2,6 +2,7 @@ package com.circleguard.auth.controller;
 
 import com.circleguard.auth.service.JwtTokenService;
 import com.circleguard.auth.client.IdentityClient;
+import com.circleguard.auth.config.FeatureFlagsProperties;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -19,6 +20,7 @@ public class LoginController {
     private final JwtTokenService jwtService;
     private final IdentityClient identityClient;
     private final MeterRegistry meterRegistry;
+    private final FeatureFlagsProperties featureFlags;
 
     @PostMapping("/login")
     public ResponseEntity<Map<String, String>> login(@RequestBody Map<String, String> request) {
@@ -61,6 +63,10 @@ public class LoginController {
 
     @PostMapping("/visitor/handoff")
     public ResponseEntity<Map<String, String>> generateVisitorHandoff(@RequestBody Map<String, String> request) {
+        if (!featureFlags.isVisitorHandoffEnabled()) {
+            return ResponseEntity.notFound().build();
+        }
+
         String anonymousIdStr = request.get("anonymousId");
         if (anonymousIdStr == null) {
             return ResponseEntity.badRequest().build();
