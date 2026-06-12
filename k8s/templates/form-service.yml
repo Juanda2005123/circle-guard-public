@@ -27,6 +27,7 @@ spec:
         team: dream-team
         version: "${IMAGE_TAG}"
     spec:
+      serviceAccountName: circleguard-app
       containers:
         - name: form-service
           image: ${DOCKER_REGISTRY}/circleguard-form-service:${IMAGE_TAG}

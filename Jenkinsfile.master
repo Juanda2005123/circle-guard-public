@@ -128,6 +128,16 @@ pipeline {
             }
         }
 
+        stage('Approval for Production Deploy') {
+            steps {
+                script {
+                    echo "🛑 Esperando aprobación manual para desplegar a PRODUCCIÓN (namespace 'master')..."
+                    input message: "¿Aprobar despliegue a producción del build #${env.BUILD_NUMBER} (rama ${env.BRANCH_NAME})?",
+                          ok: 'Desplegar a producción'
+                }
+            }
+        }
+
         stage('Deploy Infra') {
             steps {
                 script {
@@ -191,10 +201,36 @@ pipeline {
         stage('Generate Release Notes') {
             steps {
                 script {
+                    def releaseTag = "v1.0.${env.BUILD_NUMBER}"
+                    env.RELEASE_TAG = releaseTag
+
                     echo "📝 Generando Release Notes desde los últimos commits..."
-                    sh "git log -n 20 --pretty=format:'- %h - %s (%an)' > RELEASE_NOTES.md"
+                    sh """
+                        echo "# Release Notes - ${releaseTag}" > RELEASE_NOTES.md
+                        echo "" >> RELEASE_NOTES.md
+                        echo "Fecha: \$(date '+%Y-%m-%d %H:%M:%S')" >> RELEASE_NOTES.md
+                        echo "Build: #${env.BUILD_NUMBER}" >> RELEASE_NOTES.md
+                        echo "" >> RELEASE_NOTES.md
+                        echo "## Cambios incluidos" >> RELEASE_NOTES.md
+                        git log -n 20 --pretty=format:'- %h - %s (%an)' >> RELEASE_NOTES.md
+                        echo "" >> RELEASE_NOTES.md
+                    """
                     sh "cat RELEASE_NOTES.md"
                     archiveArtifacts artifacts: 'RELEASE_NOTES.md', allowEmptyArchive: true
+
+                    echo "🏷️ Creando tag de release ${releaseTag} y commiteando Release Notes..."
+                    withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
+                        sh """
+                            git config user.name "jenkins-ci"
+                            git config user.email "jenkins-ci@circleguard.local"
+                            git add RELEASE_NOTES.md
+                            git commit -m "docs(release): RELEASE_NOTES.md para ${releaseTag}" || echo "Sin cambios para commitear"
+                            git tag -a ${releaseTag} -m "Release ${releaseTag} - build #${env.BUILD_NUMBER}"
+                            git push https://\${GIT_USER}:\${GIT_TOKEN}@\$(git config --get remote.origin.url | sed 's#https://##') HEAD:${env.BRANCH_NAME}
+                            git push https://\${GIT_USER}:\${GIT_TOKEN}@\$(git config --get remote.origin.url | sed 's#https://##') ${releaseTag}
+                        """
+                    }
+                    echo "✅ Tag ${releaseTag} creado y RELEASE_NOTES.md commiteado en ${env.BRANCH_NAME}."
                 }
             }
         }

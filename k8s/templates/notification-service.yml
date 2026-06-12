@@ -27,6 +27,7 @@ spec:
         team: dream-team
         version: "${IMAGE_TAG}"
     spec:
+      serviceAccountName: circleguard-app
       containers:
         - name: notification-service
           image: ${DOCKER_REGISTRY}/circleguard-notification-service:${IMAGE_TAG}
