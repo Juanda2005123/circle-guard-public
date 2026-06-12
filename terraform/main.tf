@@ -11,12 +11,13 @@ terraform {
   backend "kubernetes" {
     secret_suffix = "circleguard-state"
     config_path   = "~/.kube/config"
+    config_context = "circleguard-aks"
   }
 }
 
 provider "kubernetes" {
   config_path    = "~/.kube/config"
-  config_context = "kind-circleguard-cluster"
+  config_context = "circleguard-aks"
 }
 
 module "security" {
@@ -31,14 +32,8 @@ module "security" {
   ldap_admin_password = var.ldap_admin_password
 }
 
-module "base_infrastructure" {
-  source = "./modules/base-infrastructure"
-
-  namespace_name = module.security.namespace_name
-}
-
-module "applications" {
-  source = "./modules/applications"
-
-  namespace_name = module.security.namespace_name
-}
+# Los módulos base-infrastructure y applications no se usan: la
+# infraestructura y los microservicios ya se despliegan vía
+# Jenkins (kubectl apply + envsubst sobre k8s/infrastructure y
+# k8s/templates). Mantenerlos aquí duplicaría esos recursos y
+# entraría en conflicto con los que ya gestiona el pipeline.

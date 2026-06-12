@@ -1,16 +1,7 @@
-resource "kubernetes_namespace" "env_namespace" {
-  metadata {
-    name = var.namespace_name
-    labels = {
-      team = "dream-team"
-    }
-  }
-}
-
 resource "kubernetes_secret" "circleguard_secrets" {
   metadata {
     name      = "circleguard-secrets"
-    namespace = kubernetes_namespace.env_namespace.metadata[0].name
+    namespace = var.namespace_name
     labels = {
       app  = "circleguard-secrets"
       team = "dream-team"
