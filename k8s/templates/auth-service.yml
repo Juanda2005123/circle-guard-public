@@ -27,6 +27,7 @@ spec:
         team: dream-team
         version: "${IMAGE_TAG}"
     spec:
+      serviceAccountName: circleguard-app
       containers:
         - name: auth-service
           image: ${DOCKER_REGISTRY}/circleguard-auth-service:${IMAGE_TAG}
@@ -37,20 +38,38 @@ spec:
             - name: SPRING_DATASOURCE_URL
               value: "jdbc:postgresql://postgres:5432/circleguard_auth"
             - name: SPRING_DATASOURCE_USERNAME
-              value: "admin"
+              valueFrom:
+                secretKeyRef:
+                  name: circleguard-secrets
+                  key: postgres-username
             - name: SPRING_DATASOURCE_PASSWORD
-              value: "password"
+              valueFrom:
+                secretKeyRef:
+                  name: circleguard-secrets
+                  key: postgres-password
             - name: SPRING_LDAP_URLS
               value: "ldap://openldap:389"
             - name: IDENTITY_API_URL
               value: "http://identity-service:8083/api/v1/identities/map"
           resources:
             requests:
-              memory: "256Mi"
-              cpu: "250m"
+              memory: "200Mi"
+              cpu: "100m"
             limits:
               memory: "512Mi"
               cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8180
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8180
+            initialDelaySeconds: 45
+            periodSeconds: 15
 
 ---
 apiVersion: v1

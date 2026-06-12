@@ -1,0 +1,41 @@
+services:
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: circleguard-prometheus
+    ports:
+      - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: circleguard-alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: circleguard-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+
+volumes:
+  grafana-data:

@@ -1,0 +1,29 @@
+groups:
+  - name: circleguard-services
+    rules:
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} is down"
+          description: "{{ $labels.job }} has been unreachable for more than 1 minute."
+
+      - alert: HighJvmHeapUsage
+        expr: sum(jvm_memory_used_bytes{area="heap"}) by (job) / sum(jvm_memory_max_bytes{area="heap"}) by (job) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.job }} heap usage above 85%"
+          description: "{{ $labels.job }} has used more than 85% of its JVM heap for 5 minutes."
+
+      - alert: HighHttpErrorRate
+        expr: sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m])) by (job) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.job }} is returning 5xx errors"
+          description: "{{ $labels.job }} has returned HTTP 5xx responses in the last 5 minutes."

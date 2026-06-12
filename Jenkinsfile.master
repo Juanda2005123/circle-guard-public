@@ -8,14 +8,14 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_REGISTRY = 'localhost:5000'
+        DOCKER_REGISTRY = 'circleguardacr.azurecr.io'
         NAMESPACE       = 'master'
         IMAGE_TAG       = "${env.BUILD_NUMBER}"
         KUBECONFIG      = '/var/jenkins_home/.kube/config_internal'
     }
 
     options {
-        timeout(time: 30, unit: 'MINUTES')
+        timeout(time: 60, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '10'))
         disableConcurrentBuilds()
     }
@@ -47,10 +47,21 @@ pipeline {
             }
         }
 
-        stage('Docker Build') {
+        stage('Static Code Analysis (SonarQube)') {
             steps {
                 script {
-                    echo "🐳 Construyendo imágenes Docker para los 6 microservicios..."
+                    echo "🔍 Iniciando análisis estático de código con SonarQube..."
+                    withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                        sh "./gradlew sonar -Dsonar.projectKey=circleguard -Dsonar.host.url=http://host.docker.internal:9000 -Dsonar.login=\${SONAR_TOKEN}"
+                    }
+                }
+            }
+        }
+
+        stage('Docker Build & Push') {
+            steps {
+                script {
+                    echo "🐳 Construyendo y publicando imágenes Docker para los 6 microservicios..."
 
                     def services = [
                         'circleguard-gateway-service',
@@ -61,25 +72,46 @@ pipeline {
                         'circleguard-promotion-service'
                     ]
 
-                    services.each { service ->
-                        def imageName = "${env.DOCKER_REGISTRY}/${service}:${env.IMAGE_TAG}"
-                        def imageLatest = "${env.DOCKER_REGISTRY}/${service}:latest"
+                    withCredentials([usernamePassword(credentialsId: 'acr-credentials', usernameVariable: 'ACR_USER', passwordVariable: 'ACR_PASS')]) {
+                        sh 'echo "$ACR_PASS" | docker login ${DOCKER_REGISTRY} -u "$ACR_USER" --password-stdin'
 
-                        echo "  → Building: ${imageName}"
-                        sh """
-                            docker build \
-                                -t ${imageName} \
-                                -t ${imageLatest} \
-                                -f services/${service}/Dockerfile \
-                                .
-                        """
+                        services.each { service ->
+                            def imageName = "${env.DOCKER_REGISTRY}/${service}:${env.IMAGE_TAG}"
+                            def imageLatest = "${env.DOCKER_REGISTRY}/${service}:latest"
 
-                        // Las imágenes se construyen en el Docker local.
-                        // Como k8s está en el mismo Docker Desktop y la política es IfNotPresent, 
-                        // puede ver las imágenes sin necesidad de kind load o push.
+                            echo "  → Building: ${imageName}"
+                            sh """
+                                docker build \
+                                    -t ${imageName} \
+                                    -t ${imageLatest} \
+                                    -f services/${service}/Dockerfile \
+                                    .
+                            """
+
+                            echo "  → Pushing: ${imageName}"
+                            sh "docker push ${imageName}"
+                            sh "docker push ${imageLatest}"
+                        }
                     }
 
-                    echo "✅ Las 6 imágenes construidas y disponibles en el cluster."
+                    echo "✅ Las 6 imágenes fueron construidas y publicadas en ${env.DOCKER_REGISTRY}."
+                }
+            }
+        }
+
+        stage('Container Security Scan (Trivy)') {
+            steps {
+                script {
+                    echo "🛡️ Iniciando escaneo de seguridad de contenedores con Trivy..."
+                    def scanServices = [
+                        'circleguard-gateway-service',
+                        'circleguard-auth-service'
+                    ]
+                    scanServices.each { service ->
+                        def imageName = "${env.DOCKER_REGISTRY}/${service}:${env.IMAGE_TAG}"
+                        echo "  → Escaneando imagen: ${imageName}"
+                        sh "trivy image --severity HIGH,CRITICAL --no-progress ${imageName} || true"
+                    }
                 }
             }
         }
@@ -87,18 +119,21 @@ pipeline {
         stage('Prepare K8s Config') {
             steps {
                 script {
-                    echo "🔧 Configurando credenciales de Kubernetes..."
+                    echo "🔧 Configurando credenciales de Kubernetes (AKS)..."
                     sh 'mkdir -p /var/jenkins_home/.kube'
-                    // Copiamos el config mapeado desde el host
+                    // Copiamos el kubeconfig del cluster AKS mapeado desde el host
                     sh 'cp /tmp/kube_host/config ${KUBECONFIG}'
-                    // Cambiamos localhost por host.docker.internal
-                    sh "sed -i 's/127.0.0.1/host.docker.internal/g' \\${KUBECONFIG}"
-                    sh "sed -i 's/localhost/host.docker.internal/g' \\${KUBECONFIG}"
-                    // Borramos la validación estricta de certificado
-                    sh "sed -i '/certificate-authority-data/d' \\${KUBECONFIG}"
-                    // Aplicamos el flag insecure
-                    def clusterName = sh(script: "kubectl config view -o jsonpath='{.clusters[0].name}'", returnStdout: true).trim()
-                    sh "kubectl config set-cluster \\${clusterName} --insecure-skip-tls-verify=true"
+                    sh 'kubectl get nodes'
+                }
+            }
+        }
+
+        stage('Approval for Production Deploy') {
+            steps {
+                script {
+                    echo "🛑 Esperando aprobación manual para desplegar a PRODUCCIÓN (namespace 'master')..."
+                    input message: "¿Aprobar despliegue a producción del build #${env.BUILD_NUMBER} (rama ${env.BRANCH_NAME})?",
+                          ok: 'Desplegar a producción'
                 }
             }
         }
@@ -166,8 +201,36 @@ pipeline {
         stage('Generate Release Notes') {
             steps {
                 script {
+                    def releaseTag = "v1.0.${env.BUILD_NUMBER}"
+                    env.RELEASE_TAG = releaseTag
+
                     echo "📝 Generando Release Notes desde los últimos commits..."
-                    sh 'git log -n 10 --oneline > RELEASE_NOTES.md'
+                    sh """
+                        echo "# Release Notes - ${releaseTag}" > RELEASE_NOTES.md
+                        echo "" >> RELEASE_NOTES.md
+                        echo "Fecha: \$(date '+%Y-%m-%d %H:%M:%S')" >> RELEASE_NOTES.md
+                        echo "Build: #${env.BUILD_NUMBER}" >> RELEASE_NOTES.md
+                        echo "" >> RELEASE_NOTES.md
+                        echo "## Cambios incluidos" >> RELEASE_NOTES.md
+                        git log -n 20 --pretty=format:'- %h - %s (%an)' >> RELEASE_NOTES.md
+                        echo "" >> RELEASE_NOTES.md
+                    """
+                    sh "cat RELEASE_NOTES.md"
+                    archiveArtifacts artifacts: 'RELEASE_NOTES.md', allowEmptyArchive: true
+
+                    echo "🏷️ Creando tag de release ${releaseTag} y commiteando Release Notes..."
+                    withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
+                        sh """
+                            git config user.name "jenkins-ci"
+                            git config user.email "jenkins-ci@circleguard.local"
+                            git add RELEASE_NOTES.md
+                            git commit -m "docs(release): RELEASE_NOTES.md para ${releaseTag}" || echo "Sin cambios para commitear"
+                            git tag -a ${releaseTag} -m "Release ${releaseTag} - build #${env.BUILD_NUMBER}"
+                            git push https://\${GIT_USER}:\${GIT_TOKEN}@\$(git config --get remote.origin.url | sed 's#https://##') HEAD:${env.BRANCH_NAME}
+                            git push https://\${GIT_USER}:\${GIT_TOKEN}@\$(git config --get remote.origin.url | sed 's#https://##') ${releaseTag}
+                        """
+                    }
+                    echo "✅ Tag ${releaseTag} creado y RELEASE_NOTES.md commiteado en ${env.BRANCH_NAME}."
                 }
             }
         }

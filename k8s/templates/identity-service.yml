@@ -27,6 +27,7 @@ spec:
         team: dream-team
         version: "${IMAGE_TAG}"
     spec:
+      serviceAccountName: circleguard-app
       containers:
         - name: identity-service
           image: ${DOCKER_REGISTRY}/circleguard-identity-service:${IMAGE_TAG}
@@ -37,16 +38,34 @@ spec:
             - name: SPRING_DATASOURCE_URL
               value: "jdbc:postgresql://postgres:5432/circleguard_identity"
             - name: SPRING_DATASOURCE_USERNAME
-              value: "admin"
+              valueFrom:
+                secretKeyRef:
+                  name: circleguard-secrets
+                  key: postgres-username
             - name: SPRING_DATASOURCE_PASSWORD
-              value: "password"
+              valueFrom:
+                secretKeyRef:
+                  name: circleguard-secrets
+                  key: postgres-password
           resources:
             requests:
-              memory: "256Mi"
-              cpu: "250m"
+              memory: "200Mi"
+              cpu: "100m"
             limits:
               memory: "512Mi"
               cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8083
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8083
+            initialDelaySeconds: 45
+            periodSeconds: 15
 
 ---
 apiVersion: v1

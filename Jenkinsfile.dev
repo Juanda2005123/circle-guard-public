@@ -13,7 +13,7 @@ pipeline {
     // Serán exportadas automáticamente para que envsubst las lea
     // ----------------------------------------------------------
     environment {
-        DOCKER_REGISTRY = 'localhost:5000'
+        DOCKER_REGISTRY = 'circleguardacr.azurecr.io'
         NAMESPACE       = 'dev'
         IMAGE_TAG       = "${env.BUILD_NUMBER}"
         KUBECONFIG      = '/var/jenkins_home/.kube/config_internal'
@@ -23,7 +23,7 @@ pipeline {
     // Opciones del pipeline
     // ----------------------------------------------------------
     options {
-        timeout(time: 30, unit: 'MINUTES')
+        timeout(time: 60, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '10'))
         disableConcurrentBuilds()
     }
@@ -51,7 +51,7 @@ pipeline {
             steps {
                 echo "🧪 Ejecutando suite de pruebas (unitarias + integración)..."
                 sh './gradlew cleanTest'
-                sh './gradlew test -x :services:circleguard-gateway-service:test --no-daemon --continue'
+                sh './gradlew test --no-daemon --continue'
             }
             post {
                 always {
@@ -67,14 +67,29 @@ pipeline {
         }
 
         // ======================================================
+        // STAGE 2.5 — Static Code Analysis (SonarQube)
+        // Analiza el código con SonarQube para asegurar calidad
+        // ======================================================
+        stage('Static Code Analysis (SonarQube)') {
+            steps {
+                script {
+                    echo "🔍 Iniciando análisis estático de código con SonarQube..."
+                    withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                        sh "./gradlew sonar -Dsonar.projectKey=circleguard -Dsonar.host.url=http://host.docker.internal:9000 -Dsonar.login=\${SONAR_TOKEN}"
+                    }
+                }
+            }
+        }
+
+        // ======================================================
         // STAGE 3 — Docker Build & Push
         // Construye las imágenes de los 6 microservicios
         // Contexto siempre es la raíz (.) para acceder a todos los módulos Gradle
         // ======================================================
-        stage('Docker Build') {
+        stage('Docker Build & Push') {
             steps {
                 script {
-                    echo "🐳 Construyendo imágenes Docker para los 6 microservicios..."
+                    echo "🐳 Construyendo y publicando imágenes Docker para los 6 microservicios..."
 
                     def services = [
                         'circleguard-gateway-service',
@@ -85,25 +100,50 @@ pipeline {
                         'circleguard-promotion-service'
                     ]
 
-                    services.each { service ->
-                        def imageName = "${env.DOCKER_REGISTRY}/${service}:${env.IMAGE_TAG}"
-                        def imageLatest = "${env.DOCKER_REGISTRY}/${service}:latest"
+                    withCredentials([usernamePassword(credentialsId: 'acr-credentials', usernameVariable: 'ACR_USER', passwordVariable: 'ACR_PASS')]) {
+                        sh 'echo "$ACR_PASS" | docker login ${DOCKER_REGISTRY} -u "$ACR_USER" --password-stdin'
 
-                        echo "  → Building: ${imageName}"
-                        sh """
-                            docker build \
-                                -t ${imageName} \
-                                -t ${imageLatest} \
-                                -f services/${service}/Dockerfile \
-                                .
-                        """
+                        services.each { service ->
+                            def imageName = "${env.DOCKER_REGISTRY}/${service}:${env.IMAGE_TAG}"
+                            def imageLatest = "${env.DOCKER_REGISTRY}/${service}:latest"
 
-                        // Las imágenes se construyen en el Docker local.
-                        // Como k8s está en el mismo Docker Desktop y la política es IfNotPresent, 
-                        // puede ver las imágenes sin necesidad de kind load o push.
+                            echo "  → Building: ${imageName}"
+                            sh """
+                                docker build \
+                                    -t ${imageName} \
+                                    -t ${imageLatest} \
+                                    -f services/${service}/Dockerfile \
+                                    .
+                            """
+
+                            echo "  → Pushing: ${imageName}"
+                            sh "docker push ${imageName}"
+                            sh "docker push ${imageLatest}"
+                        }
                     }
 
-                    echo "✅ Las 6 imágenes construidas y disponibles en el cluster."
+                    echo "✅ Las 6 imágenes fueron construidas y publicadas en ${env.DOCKER_REGISTRY}."
+                }
+            }
+        }
+
+        // ======================================================
+        // STAGE 3.5 — Container Security Scan (Trivy)
+        // Escanea las imágenes en busca de vulnerabilidades de seguridad
+        // ======================================================
+        stage('Container Security Scan (Trivy)') {
+            steps {
+                script {
+                    echo "🛡️ Iniciando escaneo de seguridad de contenedores con Trivy..."
+                    def scanServices = [
+                        'circleguard-gateway-service',
+                        'circleguard-auth-service'
+                    ]
+                    scanServices.each { service ->
+                        def imageName = "${env.DOCKER_REGISTRY}/${service}:${env.IMAGE_TAG}"
+                        echo "  → Escaneando imagen: ${imageName}"
+                        sh "trivy image --severity HIGH,CRITICAL --no-progress ${imageName} || true"
+                    }
                 }
             }
         }
@@ -114,24 +154,17 @@ pipeline {
         stage('Prepare K8s Config') {
             steps {
                 script {
-                    echo "🔧 Configurando credenciales de Kubernetes..."
+                    echo "🔧 Configurando credenciales de Kubernetes (AKS)..."
                     sh 'mkdir -p /var/jenkins_home/.kube'
-                    // Copiamos el config mapeado desde el host
+                    // Copiamos el kubeconfig del cluster AKS mapeado desde el host
                     sh 'cp /tmp/kube_host/config ${KUBECONFIG}'
-                    // Cambiamos localhost por host.docker.internal
-                    sh "sed -i 's/127.0.0.1/host.docker.internal/g' \\${KUBECONFIG}"
-                    sh "sed -i 's/localhost/host.docker.internal/g' \\${KUBECONFIG}"
-                    // Borramos la validación estricta de certificado
-                    sh "sed -i '/certificate-authority-data/d' \\${KUBECONFIG}"
-                    // Aplicamos el flag insecure
-                    def clusterName = sh(script: "kubectl config view -o jsonpath='{.clusters[0].name}'", returnStdout: true).trim()
-                    sh "kubectl config set-cluster \\${clusterName} --insecure-skip-tls-verify=true"
+                    sh 'kubectl get nodes'
                 }
             }
         }
 
         // ======================================================
-        // STAGE 5 — Deploy Infrastructure
+        // STAGE 6 — Deploy Infrastructure
         // Aplica postgres, redis, neo4j, openldap, kafka
         // envsubst reemplaza ${NAMESPACE} antes del apply
         // ======================================================
@@ -164,7 +197,7 @@ pipeline {
         }
 
         // ======================================================
-        // STAGE 5 — Deploy Services
+        // STAGE 7 — Deploy Services
         // Aplica los 6 microservicios usando envsubst para
         // reemplazar ${NAMESPACE}, ${IMAGE_TAG} y ${DOCKER_REGISTRY}
         // ======================================================

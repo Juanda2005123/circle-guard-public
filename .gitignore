@@ -42,7 +42,17 @@ node_modules/
 dist/
 web-build/
 
+# Claude Code
+.claude/
+
 # Docker Local Data
 *_data/
 pgdata/
 neo4jdata/
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.secrets.tfvars

@@ -28,3 +28,16 @@ qr:
 
 server:
   port: 8180
+
+app:
+  features:
+    visitor-handoff-enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  health:
+    ldap:
+      enabled: false
