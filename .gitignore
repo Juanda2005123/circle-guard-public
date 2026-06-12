@@ -49,3 +49,9 @@ web-build/
 *_data/
 pgdata/
 neo4jdata/
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
