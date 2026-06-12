@@ -133,6 +133,10 @@ Documentación completa en [docs/DESIGN_PATTERNS.md](DESIGN_PATTERNS.md).
 Cada patrón está documentado con su configuración, funcionamiento y
 beneficio en `docs/DESIGN_PATTERNS.md`.
 
+**Evidencia del Circuit Breaker** (gateway → auth):
+![Configuración/estado del Circuit Breaker](../Circuit_breaker.png)
+![Prueba con auth-service caído (curl recibe fallback)](../auth_curl.png)
+
 ---
 
 ## 4. CI/CD Avanzado (15%)
