@@ -27,6 +27,7 @@ spec:
         team: dream-team
         version: "${IMAGE_TAG}"
     spec:
+      serviceAccountName: circleguard-app
       containers:
         - name: gateway-service
           image: ${DOCKER_REGISTRY}/circleguard-gateway-service:${IMAGE_TAG}
