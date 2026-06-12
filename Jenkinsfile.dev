@@ -13,7 +13,7 @@ pipeline {
     // Serán exportadas automáticamente para que envsubst las lea
     // ----------------------------------------------------------
     environment {
-        DOCKER_REGISTRY = 'localhost:5000'
+        DOCKER_REGISTRY = 'circleguardacr.azurecr.io'
         NAMESPACE       = 'dev'
         IMAGE_TAG       = "${env.BUILD_NUMBER}"
         KUBECONFIG      = '/var/jenkins_home/.kube/config_internal'
@@ -86,10 +86,10 @@ pipeline {
         // Construye las imágenes de los 6 microservicios
         // Contexto siempre es la raíz (.) para acceder a todos los módulos Gradle
         // ======================================================
-        stage('Docker Build') {
+        stage('Docker Build & Push') {
             steps {
                 script {
-                    echo "🐳 Construyendo imágenes Docker para los 6 microservicios..."
+                    echo "🐳 Construyendo y publicando imágenes Docker para los 6 microservicios..."
 
                     def services = [
                         'circleguard-gateway-service',
@@ -100,25 +100,29 @@ pipeline {
                         'circleguard-promotion-service'
                     ]
 
-                    services.each { service ->
-                        def imageName = "${env.DOCKER_REGISTRY}/${service}:${env.IMAGE_TAG}"
-                        def imageLatest = "${env.DOCKER_REGISTRY}/${service}:latest"
+                    withCredentials([usernamePassword(credentialsId: 'acr-credentials', usernameVariable: 'ACR_USER', passwordVariable: 'ACR_PASS')]) {
+                        sh 'echo "$ACR_PASS" | docker login ${DOCKER_REGISTRY} -u "$ACR_USER" --password-stdin'
 
-                        echo "  → Building: ${imageName}"
-                        sh """
-                            docker build \
-                                -t ${imageName} \
-                                -t ${imageLatest} \
-                                -f services/${service}/Dockerfile \
-                                .
-                        """
+                        services.each { service ->
+                            def imageName = "${env.DOCKER_REGISTRY}/${service}:${env.IMAGE_TAG}"
+                            def imageLatest = "${env.DOCKER_REGISTRY}/${service}:latest"
 
-                        // Las imágenes se construyen en el Docker local.
-                        // Como k8s está en el mismo Docker Desktop y la política es IfNotPresent, 
-                        // puede ver las imágenes sin necesidad de kind load o push.
+                            echo "  → Building: ${imageName}"
+                            sh """
+                                docker build \
+                                    -t ${imageName} \
+                                    -t ${imageLatest} \
+                                    -f services/${service}/Dockerfile \
+                                    .
+                            """
+
+                            echo "  → Pushing: ${imageName}"
+                            sh "docker push ${imageName}"
+                            sh "docker push ${imageLatest}"
+                        }
                     }
 
-                    echo "✅ Las 6 imágenes construidas y disponibles en el cluster."
+                    echo "✅ Las 6 imágenes fueron construidas y publicadas en ${env.DOCKER_REGISTRY}."
                 }
             }
         }
@@ -150,48 +154,11 @@ pipeline {
         stage('Prepare K8s Config') {
             steps {
                 script {
-                    echo "🔧 Configurando credenciales de Kubernetes..."
+                    echo "🔧 Configurando credenciales de Kubernetes (AKS)..."
                     sh 'mkdir -p /var/jenkins_home/.kube'
-                    // Copiamos el config mapeado desde el host
+                    // Copiamos el kubeconfig del cluster AKS mapeado desde el host
                     sh 'cp /tmp/kube_host/config ${KUBECONFIG}'
-                    // Cambiamos localhost por host.docker.internal
-                    sh "sed -i 's/127.0.0.1/host.docker.internal/g' \\${KUBECONFIG}"
-                    sh "sed -i 's/localhost/host.docker.internal/g' \\${KUBECONFIG}"
-                    // Borramos la validación estricta de certificado
-                    sh "sed -i '/certificate-authority-data/d' \\${KUBECONFIG}"
-                    // Aplicamos el flag insecure
-                    def clusterName = sh(script: "kubectl config view -o jsonpath='{.clusters[0].name}'", returnStdout: true).trim()
-                    sh "kubectl config set-cluster \\${clusterName} --insecure-skip-tls-verify=true"
-                }
-            }
-        }
-
-        // ======================================================
-        // STAGE 5 — Load Images to Kind
-        // Carga las imágenes Docker en el clúster local de Kind
-        // ======================================================
-        stage('Load Images to Kind') {
-            steps {
-                script {
-                    echo "📥 Cargando imágenes Docker en el clúster Kind..."
-                    def fullClusterName = sh(script: "kubectl config view -o jsonpath='{.clusters[0].name}'", returnStdout: true).trim()
-                    def clusterName = fullClusterName.startsWith("kind-") ? fullClusterName.substring(5) : fullClusterName
-
-                    def services = [
-                        'circleguard-gateway-service',
-                        'circleguard-auth-service',
-                        'circleguard-identity-service',
-                        'circleguard-form-service',
-                        'circleguard-notification-service',
-                        'circleguard-promotion-service'
-                    ]
-
-                    services.each { service ->
-                        def imageName = "${env.DOCKER_REGISTRY}/${service}:${env.IMAGE_TAG}"
-                        echo "  → Cargando imagen: ${imageName} en el clúster: ${clusterName}"
-                        sh "kind load docker-image ${imageName} --name ${clusterName}"
-                    }
-                    echo "✅ Todas las imágenes fueron cargadas en Kind."
+                    sh 'kubectl get nodes'
                 }
             }
         }
