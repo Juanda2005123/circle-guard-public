@@ -2,7 +2,7 @@
 FROM gradle:8.6.0-jdk21 AS build
 WORKDIR /app
 COPY --chown=gradle:gradle . .
-RUN ./gradlew :services:circleguard-form-service:bootJar --no-daemon -Dorg.gradle.jvmargs=-Xmx1536m
+RUN gradle :services:circleguard-form-service:bootJar --no-daemon -Dorg.gradle.jvmargs=-Xmx1536m
 
 # Stage 2: Run
 FROM eclipse-temurin:21-jre-alpine
