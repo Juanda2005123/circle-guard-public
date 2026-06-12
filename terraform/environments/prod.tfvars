@@ -1,1 +1,1 @@
-namespace_name = "prod"
+namespace_name = "master"

@@ -55,3 +55,4 @@ neo4jdata/
 *.tfstate
 *.tfstate.*
 crash.log
+*.secrets.tfvars

@@ -8,7 +8,7 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_REGISTRY = 'localhost:5000'
+        DOCKER_REGISTRY = 'circleguardacr.azurecr.io'
         NAMESPACE       = 'stage'
         IMAGE_TAG       = "${env.BUILD_NUMBER}"
         KUBECONFIG      = '/var/jenkins_home/.kube/config_internal'
@@ -58,10 +58,10 @@ pipeline {
             }
         }
 
-        stage('Docker Build') {
+        stage('Docker Build & Push') {
             steps {
                 script {
-                    echo "🐳 Construyendo imágenes Docker para los 6 microservicios..."
+                    echo "🐳 Construyendo y publicando imágenes Docker para los 6 microservicios..."
 
                     def services = [
                         'circleguard-gateway-service',
@@ -72,25 +72,29 @@ pipeline {
                         'circleguard-promotion-service'
                     ]
 
-                    services.each { service ->
-                        def imageName = "${env.DOCKER_REGISTRY}/${service}:${env.IMAGE_TAG}"
-                        def imageLatest = "${env.DOCKER_REGISTRY}/${service}:latest"
+                    withCredentials([usernamePassword(credentialsId: 'acr-credentials', usernameVariable: 'ACR_USER', passwordVariable: 'ACR_PASS')]) {
+                        sh 'echo "$ACR_PASS" | docker login ${DOCKER_REGISTRY} -u "$ACR_USER" --password-stdin'
 
-                        echo "  → Building: ${imageName}"
-                        sh """
-                            docker build \
-                                -t ${imageName} \
-                                -t ${imageLatest} \
-                                -f services/${service}/Dockerfile \
-                                .
-                        """
+                        services.each { service ->
+                            def imageName = "${env.DOCKER_REGISTRY}/${service}:${env.IMAGE_TAG}"
+                            def imageLatest = "${env.DOCKER_REGISTRY}/${service}:latest"
 
-                        // Las imágenes se construyen en el Docker local.
-                        // Como k8s está en el mismo Docker Desktop y la política es IfNotPresent, 
-                        // puede ver las imágenes sin necesidad de kind load o push.
+                            echo "  → Building: ${imageName}"
+                            sh """
+                                docker build \
+                                    -t ${imageName} \
+                                    -t ${imageLatest} \
+                                    -f services/${service}/Dockerfile \
+                                    .
+                            """
+
+                            echo "  → Pushing: ${imageName}"
+                            sh "docker push ${imageName}"
+                            sh "docker push ${imageLatest}"
+                        }
                     }
 
-                    echo "✅ Las 6 imágenes construidas y disponibles en el cluster."
+                    echo "✅ Las 6 imágenes fueron construidas y publicadas en ${env.DOCKER_REGISTRY}."
                 }
             }
         }
@@ -115,44 +119,11 @@ pipeline {
         stage('Prepare K8s Config') {
             steps {
                 script {
-                    echo "🔧 Configurando credenciales de Kubernetes..."
+                    echo "🔧 Configurando credenciales de Kubernetes (AKS)..."
                     sh 'mkdir -p /var/jenkins_home/.kube'
-                    // Copiamos el config mapeado desde el host
+                    // Copiamos el kubeconfig del cluster AKS mapeado desde el host
                     sh 'cp /tmp/kube_host/config ${KUBECONFIG}'
-                    // Cambiamos localhost por host.docker.internal
-                    sh "sed -i 's/127.0.0.1/host.docker.internal/g' \\${KUBECONFIG}"
-                    sh "sed -i 's/localhost/host.docker.internal/g' \\${KUBECONFIG}"
-                    // Borramos la validación estricta de certificado
-                    sh "sed -i '/certificate-authority-data/d' \\${KUBECONFIG}"
-                    // Aplicamos el flag insecure
-                    def clusterName = sh(script: "kubectl config view -o jsonpath='{.clusters[0].name}'", returnStdout: true).trim()
-                    sh "kubectl config set-cluster \\${clusterName} --insecure-skip-tls-verify=true"
-                }
-            }
-        }
-
-        stage('Load Images to Kind') {
-            steps {
-                script {
-                    echo "📥 Cargando imágenes Docker en el clúster Kind..."
-                    def fullClusterName = sh(script: "kubectl config view -o jsonpath='{.clusters[0].name}'", returnStdout: true).trim()
-                    def clusterName = fullClusterName.startsWith("kind-") ? fullClusterName.substring(5) : fullClusterName
-
-                    def services = [
-                        'circleguard-gateway-service',
-                        'circleguard-auth-service',
-                        'circleguard-identity-service',
-                        'circleguard-form-service',
-                        'circleguard-notification-service',
-                        'circleguard-promotion-service'
-                    ]
-
-                    services.each { service ->
-                        def imageName = "${env.DOCKER_REGISTRY}/${service}:${env.IMAGE_TAG}"
-                        echo "  → Cargando imagen: ${imageName} en el clúster: ${clusterName}"
-                        sh "kind load docker-image ${imageName} --name ${clusterName}"
-                    }
-                    echo "✅ Todas las imágenes fueron cargadas en Kind."
+                    sh 'kubectl get nodes'
                 }
             }
         }
@@ -221,9 +192,16 @@ pipeline {
             steps {
                 script {
                     echo "🧪 Ejecutando pruebas E2E (REST Assured), Rendimiento de Integración (Neo4j) y Carga (Locust)..."
+
+                    // El gateway-service es NodePort dentro de AKS y no es accesible
+                    // directamente desde el contenedor de Jenkins, así que abrimos
+                    // un port-forward temporal hacia el Service.
+                    sh 'kubectl port-forward -n ${NAMESPACE} svc/gateway-service 30087:8087 --address 0.0.0.0 > /tmp/port-forward.log 2>&1 &'
+                    sh 'sleep 5'
+
                     sh '''
                         echo "Ejecutando pruebas con REST Assured..."
-                        ./gradlew test --tests "*E2E*" -Dgateway.url=http://host.docker.internal:30087 -DrunE2E=true || echo "Advertencia: Algunas pruebas E2E fallaron."
+                        ./gradlew test --tests "*E2E*" -Dgateway.url=http://localhost:30087 -DrunE2E=true || echo "Advertencia: Algunas pruebas E2E fallaron."
                     '''
                     sh '''
                         echo "Ejecutando pruebas de rendimiento de integración (Neo4j/Testcontainers)..."
@@ -231,8 +209,10 @@ pipeline {
                     '''
                     sh '''
                         echo "Ejecutando pruebas de carga con Locust..."
-                        docker run --rm -v \$(pwd)/performance-tests:/mnt/locust locustio/locust -f /mnt/locust/locustfile.py --headless -u 50 -r 10 --run-time 1m --host http://host.docker.internal:30087 || echo "Advertencia: Pruebas de rendimiento finalizadas con errores."
+                        docker run --rm --network host -v \$(pwd)/performance-tests:/mnt/locust locustio/locust -f /mnt/locust/locustfile.py --headless -u 50 -r 10 --run-time 1m --host http://localhost:30087 || echo "Advertencia: Pruebas de rendimiento finalizadas con errores."
                     '''
+
+                    sh 'pkill -f "kubectl port-forward" || true'
                 }
             }
         }
