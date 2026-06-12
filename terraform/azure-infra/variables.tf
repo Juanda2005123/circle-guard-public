@@ -25,7 +25,7 @@ variable "acr_name" {
 variable "node_count" {
   type        = number
   description = "Number of nodes in the default node pool"
-  default     = 1
+  default     = 2
 }
 
 variable "node_vm_size" {
