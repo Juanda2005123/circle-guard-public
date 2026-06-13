@@ -160,6 +160,15 @@ Pipelines completos en Jenkins: `Jenkinsfile.dev`, `Jenkinsfile.stage`,
 `dev` → `stage` (E2E + Locust) → `master` (aprobación manual obligatoria),
 correspondientes a los namespaces de AKS `dev`/`stage`/`master`.
 
+**El pipeline `circleguard-stage #10` ejecutó todos sus stages
+exitosamente** (Checkout, Build & Test, SonarQube, Docker Build & Push,
+Trivy, Prepare K8s Config, Deploy Infra, Deploy Services, **E2E &
+Performance Tests**, Post Actions), confirmando los pods del namespace
+`stage` (infraestructura + 6 microservicios) en estado `Running` vía
+`kubectl get all -n stage`:
+
+![Pipeline stage completo](../Evidence_Pipeline_Stage_Full.png)
+
 ### Versionado y notificaciones
 - Versionado: tag automático `vX.Y.<build_number>` en cada release a
   producción (ver sección 6).
@@ -250,20 +259,22 @@ Detalle en [docs/ARCHITECTURE.md §9](ARCHITECTURE.md#9-observabilidad) y
 | Infraestructura como código | [terraform/README.md](../terraform/README.md) |
 | Release Notes | `RELEASE_NOTES.md` (generado y commiteado automáticamente por `Jenkinsfile.master`) |
 | Repositorio organizado | Ramas `develop`/`stage`/`master`, PRs por feature, `docs/` centralizado |
-| Costos de infraestructura | ❌ **No implementado** (fuera de alcance acordado para esta entrega) |
+| Costos de infraestructura | ✅ [docs/COSTS.md](COSTS.md) |
 | Video demostrativo | ⚠️ Pendiente de grabación |
 
 ---
 
-## 10. Evidencia de ejecución del pipeline (`circleguard-dev #9`)
+## 10. Evidencia de ejecución de los pipelines
 
-El pipeline `circleguard-dev` ejecuta **todos sus stages exitosamente** —
+### `circleguard-dev #9` — abort por timeout (diagnóstico)
+
+El pipeline `circleguard-dev` ejecutó **todos sus stages exitosamente** —
 incluyendo Build & Test, SonarQube, Docker Build & Push (6 imágenes),
 Trivy, Deploy Infra y el despliegue de 5 de los 6 microservicios — y
-**`notification-service` completa su rollout correctamente**
+**`notification-service` completó su rollout correctamente**
 ("`deployment "notification-service-deployment" successfully rolled out`").
 
-El build queda marcado como **abortado** únicamente en el último paso, el
+El build quedó marcado como **abortado** únicamente en el último paso, el
 rollout de `promotion-service-deployment`, con el mensaje:
 ```
 Waiting for deployment "promotion-service-deployment" rollout to finish: 1 old replicas are pending termination...
@@ -273,24 +284,46 @@ Sending interrupt signal to process
 ![Pipeline — stages completos](../Evidence_Pipeline_Almost.png)
 ![Detalle Deploy Services — notification OK, promotion interrumpido](../Evidence_Pipeline_Almost_2.png)
 
-### Hipótesis e investigación
-El patrón `"1 old replicas are pending termination"` es el mismo que afecta
-a `notification-service` en esta misma corrida (y que **sí** logra
-completar a los 32s). Nuestra hipótesis es que `promotion-service` necesita
-un poco más de tiempo para que el pod anterior termine su graceful
+**Hipótesis**: el patrón `"1 old replicas are pending termination"` es el
+mismo que afectó a `notification-service` en esta misma corrida (y que
+**sí** logró completar a los 32s). La hipótesis es que `promotion-service`
+necesita un poco más de tiempo para que el pod anterior termine su graceful
 shutdown (probablemente por la desconexión del consumer de Kafka), y el
 **timeout global del pipeline (30 min, consumido en su mayoría por "Docker
-Build & Push" ≈21 min)** se agota segundos antes de que ese rollout
-finalice naturalmente.
+Build & Push" ≈21 min)** se agotaba segundos antes de que ese rollout
+finalizara naturalmente.
 
 **Acción correctiva aplicada**: se incrementó el timeout global de los 3
 Jenkinsfiles de 30 a 60 minutos (rama `fix/jenkins-pipeline-timeout`), para
 dar margen suficiente a que el último rollout complete sin ser
 interrumpido.
 
-**Estado al momento de esta entrega**: tras este hallazgo, al intentar
-relanzar el pipeline con el fix aplicado, el entorno Docker local quedó
-inestable (el equipo de desarrollo sufrió un cierre inesperado que dejó el
-daemon de Docker/Jenkins sin responder). La re-ejecución completa con el
-fix de timeout se realizará y se documentará/sustentará en la presentación
-de las 6pm.
+### `circleguard-stage #10` — validación del fix ✅
+
+Tras aplicar el fix de timeout, el pipeline `circleguard-stage #10` corrió
+**de punta a punta sin interrupciones**, incluyendo el stage adicional
+**E2E & Performance Tests** (REST Assured + Locust) que no corre en `dev`.
+Todos los stages (Checkout, Build & Test, SonarQube, Docker Build & Push,
+Trivy, Prepare K8s Config, Deploy Infra, Deploy Services, E2E & Performance
+Tests, Post Actions) terminaron en verde, y `kubectl get all -n stage`
+confirma todos los pods —incluyendo `promotion-service`— en estado
+`Running`. Esto **valida la hipótesis** de la sección anterior: el aumento
+del timeout global a 60 minutos fue suficiente para que el rollout de
+`promotion-service` complete sin ser abortado.
+
+![Pipeline stage completo](../Evidence_Pipeline_Stage_Full.png)
+
+### `circleguard-master` — gate de aprobación manual
+
+`Jenkinsfile.master` implementa el stage **"Approval for Production
+Deploy"**, un paso `input` que pausa el pipeline antes de tocar el
+namespace `master` y requiere aprobación manual explícita (ver
+[ARCHITECTURE.md §6](ARCHITECTURE.md#6-cicd-jenkins) y
+[OPERATIONS_MANUAL.md §2](OPERATIONS_MANUAL.md#2-aprobar-un-despliegue-a-producción)).
+Este gate está **implementado y verificado a nivel de código** —no es un
+placeholder—, pero al momento de esta entrega no se ha completado/capturado
+una corrida end-to-end de `circleguard-master` con el fix de timeout
+aplicado. Dado que `circleguard-stage #10` (mismo Jenkinsfile base, mismo
+timeout de 60 min) corrió completo sin problemas, la expectativa es que
+`master` se comporte igual; esta corrida se ejecutará y sustentará en la
+presentación de las 6pm.
